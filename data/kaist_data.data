@@ -1,0 +1,4 @@
+classes=1
+train=data/kaist_train_data.txt
+valid=data/kaist_val_data.txt
+names=data/kaist_data_label.names
