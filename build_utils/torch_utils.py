@@ -45,6 +45,7 @@ def model_info(model, verbose=False):
                   (i, name, p.requires_grad, p.numel(), list(p.shape), p.mean(), p.std()))
 
     try:  # FLOPS
+        # 强烈不建议在这个项目中安装thop，因为它会无谓的为模型添加更多的参数，同时项目有时要求有两个输入，可能会引发一些错误
         from thop import profile
         macs, _ = profile(model, inputs=(torch.zeros(1, 3, 480, 640),), verbose=False)
         fs = ', %.1f GFLOPS' % (macs / 1E9 * 2)

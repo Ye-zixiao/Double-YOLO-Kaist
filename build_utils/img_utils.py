@@ -1,5 +1,5 @@
+from cv2 import cv2
 import numpy as np
-import cv2
 
 
 def letterbox(img: np.ndarray,
@@ -51,11 +51,3 @@ def letterbox(img: np.ndarray,
 
     img = cv2.copyMakeBorder(img, top, bottom, left, right, cv2.BORDER_CONSTANT, value=color)  # add border
     return img, ratio, (dw, dh)
-
-
-
-
-
-
-
-

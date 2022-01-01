@@ -64,7 +64,7 @@ def train(hyp):
     hyp["obj"] *= imgsz_test / 32
 
     # 6、创建网络模型对象
-    model = YOLOv3(cfg).to(device)
+    model = YOLO(cfg).to(device)
 
     # 根据是否需要只针对预测分支进行训练的要求，冻结特征提取网络层的权重参数
     if opt.freeze_layers >= 0:
@@ -238,13 +238,13 @@ if __name__ == '__main__':
 
     # 下面几个参数是我们重点需要配置的参数
     parser.add_argument('--epochs', type=int, default=30)
-    parser.add_argument('--batch-size', type=int, default=4)
-    parser.add_argument('--hyp', type=str, default='config/myhyp.yaml', help='hyperparameters path')
-    parser.add_argument('--cfg', type=str, default='config/kaist_dyolov3_1.cfg', help="*.cfg path")
+    parser.add_argument('--batch-size', type=int, default=3)
+    parser.add_argument('--hyp', type=str, default='config/hyp.yaml', help='hyperparameters path')
+    parser.add_argument('--cfg', type=str, default='config/kaist_dyolov4.cfg', help="*.cfg path")
     parser.add_argument('--single-cls', type=bool, default=True, help='train as single-class dataset')
-    parser.add_argument('--weights', type=str, default='weights/kaist_dyolov3_best.pt', help='initial weights path')
-    parser.add_argument('--name', default='kaist_yolov3', help='renames results.txt to results_name.txt if supplied')
-    parser.add_argument('--freeze-layers', type=int, default=149,
+    parser.add_argument('--weights', type=str, default='weights/pretrained_dyolov4.pt', help='initial weights path')
+    parser.add_argument('--name', default='kaist_dyolov4', help='renames results.txt to results_name.txt if supplied')
+    parser.add_argument('--freeze-layers', type=int, default=209,
                         help='Freeze feature extract layers, -1 means no layers will be froze')
 
     # 下面几个参数几乎不需要改动

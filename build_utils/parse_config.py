@@ -1,5 +1,5 @@
-import os
 import numpy as np
+import os
 
 
 def parse_model_cfg(path: str):
@@ -15,7 +15,7 @@ def parse_model_cfg(path: str):
         raise FileNotFoundError("the cfg file not exist...")
 
     # 读取文件信息并使用换行符对文件进行分割
-    with open(path, "r") as f:
+    with open(path, "r", encoding='utf-8') as f:
         lines = f.read().split("\n")
 
     # 去除空行和注释行
@@ -54,7 +54,7 @@ def parse_model_cfg(path: str):
     supported = ['type', 'batch_normalize', 'filters', 'size', 'stride', 'pad', 'activation', 'layers', 'groups',
                  'from', 'mask', 'anchors', 'classes', 'num', 'jitter', 'ignore_thresh', 'truth_thresh', 'random',
                  'stride_x', 'stride_y', 'weights_type', 'weights_normalization', 'scale_x_y', 'beta_nms', 'nms_kind',
-                 'iou_loss', 'iou_normalizer', 'cls_normalizer', 'iou_thresh', 'probability']
+                 'iou_loss', 'iou_normalizer', 'cls_normalizer', 'iou_thresh', 'probability', 'max_delta']
 
     # 遍历检查每个模型的配置
     for x in mdefs[1:]:  # 0对应net配置
@@ -91,7 +91,8 @@ def parse_data_cfg(path):
 
     return options
 
-# cfg_file_path = "../config/kaist_yolov3.cfg"
-# mdefs = parse_model_cfg(cfg_file_path)
-# for cfg_line in mdefs[:]:
+
+# # 下面的代码用于展示parse_model_cfg()的返回结果，帮助理解
+# cfg_file_path = "../config/kaist_yolov4.cfg"
+# for cfg_line in parse_model_cfg(cfg_file_path):
 #     print(cfg_line)

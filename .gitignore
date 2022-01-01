@@ -7,4 +7,6 @@ results/*
 weights/*
 runs/*
 
+test.py
+
 !Kaist/trans_kaist2voc.py

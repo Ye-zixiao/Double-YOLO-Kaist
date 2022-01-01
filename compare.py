@@ -1,7 +1,7 @@
 from build_utils import img_utils, torch_utils, utils
 from matplotlib import pyplot as plt
 from draw_box_utils import draw_box
-from models import YOLOv3
+from models import YOLO
 from cv2 import cv2
 
 import numpy as np
@@ -10,13 +10,23 @@ import json
 import time
 import os
 
+plt.rcParams['font.sans-serif'] = ['SimHei']  # 用来正常显示中文标签
+plt.rcParams['axes.unicode_minus'] = False  # 用来正常显示负号
+
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 
-normal_cfg_path = "config/kaist_yolov3.cfg"
-double_cfg_path = "config/kaist_dyolov3_1.cfg"
 json_path = "data/kaist_voc_classes.json"
-normal_weight_path = "results/experiment 2/kaist_yolov3_best.pt"
-double_weight_path = "results/experiment 3/kaist_dyolov3_best.pt"
+# 使用YOLOv3做对比
+# normal_cfg_path = "config/kaist_yolov3.cfg"
+# double_cfg_path = "config/kaist_dyolov3.cfg"
+# normal_weight_path = "results/experiment 2/kaist_yolov3_best.pt"
+# double_weight_path = "results/experiment 3/kaist_dyolov3_best.pt"
+# 使用YOLOv4做对比
+normal_cfg_path = "config/kaist_yolov4.cfg"
+double_cfg_path = "config/kaist_dyolov4.cfg"
+normal_weight_path = "results/experiment 4/kaist_yolov4_best.pt"
+double_weight_path = "results/experiment 6/kaist_dyolov4_best.pt"
+# double_weight_path = "weights/kaist_dyolov4_best.pt"
 assert os.path.exists(normal_cfg_path), "normal cfg file {} does not exist".format(normal_cfg_path)
 assert os.path.exists(double_cfg_path), "double cfg file {} does not exist".format(double_cfg_path)
 assert os.path.exists(normal_weight_path), "normal weights file {} does not exist".format(normal_weight_path)
@@ -36,12 +46,12 @@ device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 print("Using {} device predicting".format(device))
 
 # 创建网络模型并使用训练得到的权重参数初始化之
-normal_model = YOLOv3(normal_cfg_path, input_size)
+normal_model = YOLO(normal_cfg_path, input_size)
 normal_state_dict = torch.load(normal_weight_path, device)['model']
 normal_model.load_state_dict(normal_state_dict)
 normal_model.to(device)
 
-double_model = YOLOv3(double_cfg_path, input_size)
+double_model = YOLO(double_cfg_path, input_size)
 double_state_dict = torch.load(double_weight_path, device)['model']
 double_model.load_state_dict(double_state_dict)
 double_model.to(device)
@@ -90,20 +100,20 @@ def main(img_path: str, display=True):
         # 将图像送入网络模型中预测
         t1 = torch_utils.time_synchronized()
         pred1 = normal_model(v_img, l_img)[0]
-        pred2 = double_model(v_img, l_img)[0]
         t2 = torch_utils.time_synchronized()
+        pred2 = double_model(v_img, l_img)[0]
+        t3 = torch_utils.time_synchronized()
         print("normal predict time: {}".format(t2 - t1))
+        print("double predict time: {}".format(t3 - t2))
 
         # 对预测得到的边界框使用NMS消除那些未达标的边界框，其中预测得到的每个向量内的数据为：
         # x  y  w  h  conf  classes_scores
         pred1 = utils.non_max_suppression(pred1, conf_thres=0.1, iou_thres=0.6, multi_label=True)[0]
         pred2 = utils.non_max_suppression(pred2, conf_thres=0.1, iou_thres=0.6, multi_label=True)[0]
-        t3 = time.time()
-        print("nms calculate time: {}".format(t3 - t1))
 
         if pred1 is None or pred2 is None:
             print("No target detected")
-            exit(0)
+            return
 
         # 将预测的坐标信息转换回原图尺度
         pred1[:, :4] = utils.scale_coords(v_img.shape[2:], pred1[:, :4], v_img_o.shape).round()
@@ -122,27 +132,28 @@ def main(img_path: str, display=True):
         # 在可见光图像中绘制预测得到的边界框，并将BGR-HWC转换成RGB-HWC的数据格式，并最终展示预测结果
         v_img_r1 = draw_box(v_img_o[:, :, ::-1].copy(), bboxes1, classes1, scores1, category_index)
         v_img_r2 = draw_box(v_img_o[:, :, ::-1].copy(), bboxes2, classes2, scores2, category_index)
-        plt.figure(figsize=(10, 10))
-        plt.subplot(2, 2, 1)
-        plt.imshow(v_img_o[:, :, ::-1])  # 将可见光原图从BGR-HWC转换成RGB-HWC
-        plt.subplot(2, 2, 2)
-        plt.imshow(l_img_o[:, :, ::-1])
-        plt.subplot(2, 2, 3)
-        plt.imshow(v_img_r1)
-        plt.subplot(2, 2, 4)
-        plt.imshow(v_img_r2)
+
+        img_list = [v_img_o[:, :, ::-1], l_img_o[:, :, ::-1], v_img_r1, v_img_r2]
+        img_name = ['可见光图像', '红外光图像', '单模态方法', '双模态方法']
+
+        plt.figure(figsize=(8, 7), dpi=150)
+        plt.subplots_adjust(left=0, right=1, bottom=0.02, top=0.96, wspace=0, hspace=0.1)
+        for i, img in enumerate(img_list):
+            plt.subplot(2, 2, i + 1)
+            plt.imshow(img)
+            plt.title(img_name[i], fontdict={'weight': 'normal', 'size': 7})
+            plt.xticks([])
+            plt.yticks([])
         if display:
             plt.show()
         else:
-            plt.savefig(os.path.join("imgs/res", img_path.split('/')[-1]),
+            plt.savefig(os.path.join("imgs/res/yolov4", img_path.split('/')[-1]),
                         bbox_inches='tight')
 
 
 if __name__ == '__main__':
-    main("imgs/I00200.jpg", False)
-    main("imgs/I00304.jpg", False)
-    main("imgs/I00933.jpg", False)
-    main("imgs/I00972.jpg", False)
-    main("imgs/I01020.jpg", False)
-    main("imgs/I01039.jpg", False)
-    main("imgs/I01206.jpg", False)
+    imgs_root = "imgs/ori"
+    file_list = [imgs_root + "/" + f.replace("_visible", "")
+                 for f in os.listdir(imgs_root) if f.endswith('_visible.jpg')]
+    for f in file_list:
+        main(f, False)

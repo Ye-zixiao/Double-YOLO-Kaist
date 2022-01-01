@@ -95,5 +95,5 @@ def draw_box(image, boxes, classes, scores, category_index, thresh=0.1, line_thi
                                       ymin * 1, ymax * 1)
         draw.line([(left, top), (left, bottom), (right, bottom),
                    (right, top), (left, top)], width=line_thickness, fill=color)
-        draw_text(draw, box_to_display_str_map, box, left, right, top, bottom, color)
+        # draw_text(draw, box_to_display_str_map, box, left, right, top, bottom, color)
     return image

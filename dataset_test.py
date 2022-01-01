@@ -52,7 +52,7 @@ def test_dataset():
                                                 rect=False)
 
     for i in range(5):
-        assert False, "下面的代码需要在LoadKaistImagesAndLabels更改返回值类型才能正常运行"
+        # assert False, "下面的代码需要在LoadKaistImagesAndLabels更改返回值类型才能正常运行"
         # 从数据集对象中随机地选取一张可见光图像和对应的红外光图像
         v_img, l_img, labels = train_dataloader.__getitem__(
             random.randint(0, train_dataloader.__len__() - 1))

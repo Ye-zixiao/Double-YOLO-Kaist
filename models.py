@@ -45,6 +45,8 @@ def create_modules(modules_defs: list, img_size):
 
             if mdef['activation'] == 'leaky':
                 modules.add_module("activation", nn.LeakyReLU(0.1, inplace=True))
+            elif mdef['activation'] == 'mish':
+                modules.add_module("activation", nn.Mish(inplace=True))
 
         elif mdef['type'] == "maxpool":
             k = mdef['size']
@@ -194,9 +196,9 @@ class YOLOLayer(nn.Module):
             return io.view(bs, -1, self.no), p  # view [1, 3, 13, 13, 85] as [1, 507, 85]
 
 
-class YOLOv3(nn.Module):
+class YOLO(nn.Module):
     def __init__(self, cfg, img_size=(416, 416), verbose=False):
-        super(YOLOv3, self).__init__()
+        super(YOLO, self).__init__()
         self.input_size = [img_size] * 2 if isinstance(img_size, int) else img_size
         self.module_defs = parse_model_cfg(cfg)
         self.module_list, self.routs, self.net_info = create_modules(self.module_defs, img_size)
