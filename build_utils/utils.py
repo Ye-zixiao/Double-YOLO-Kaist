@@ -207,18 +207,17 @@ def smooth_BCE(eps=0.1):  # https://github.com/ultralytics/yolov3/issues/238#iss
 def compute_loss(p, targets, model):  # predictions, targets, model
     '''
     计算损失函数
-    Args:
-        p:
-        targets:
-        model:
-
-    Returns:
-        返回一个记录分类损失、置信度损失和定位损失的字典
+    :param p: 网络预测值
+    :param targets: 标注信息
+    :param model: 网络模型
+    :return:
     '''
+
     device = p[0].device
-    lcls = torch.zeros(1, device=device)  # Tensor(0)
-    lbox = torch.zeros(1, device=device)  # Tensor(0)
-    lobj = torch.zeros(1, device=device)  # Tensor(0)
+    lcls = torch.zeros(1, device=device)  # 类别损失
+    lbox = torch.zeros(1, device=device)  # 边界框损失
+    lobj = torch.zeros(1, device=device)  # 置信度损失
+
     # 执行正样本匹配，其中正样本指的是预测边界框与标注边界框Ground Truth Boxes的交并比IoU大于指定阈值的边界框
     tcls, tbox, indices, anchors = build_targets(p, targets, model)  # targets
     h = model.hyp  # hyperparameters
@@ -246,15 +245,23 @@ def compute_loss(p, targets, model):  # predictions, targets, model
             # 对应匹配到正样本的预测信息
             ps = pi[b, a, gj, gi]  # prediction subset corresponding to targets
 
-            # GIoU 计算GIoU Loss定位损失
-            pxy = ps[:, :2].sigmoid()
-            pwh = ps[:, 2:4].exp().clamp(max=1E3) * anchors[i]
-            pbox = torch.cat((pxy, pwh), 1)  # predicted box
-            giou = bbox_iou(pbox.t(), tbox[i], x1y1x2y2=False, GIoU=True)  # giou(prediction, target)
-            lbox += (1.0 - giou).mean()  # giou loss
+            if 'ciou' not in h or h['ciou'] == 0.0:
+                # GIoU 计算GIoU Loss定位损失
+                pxy = ps[:, :2].sigmoid()
+                pwh = ps[:, 2:4].exp().clamp(max=1E3) * anchors[i]
+                pbox = torch.cat((pxy, pwh), 1)  # predicted box
+                iou = bbox_iou(pbox.t(), tbox[i], x1y1x2y2=False, GIoU=True)  # iou(prediction, target)
+                lbox += (1.0 - iou).mean()  # iou loss
+            else:
+                # Regression
+                pxy = ps[:, :2].sigmoid() * 2. - 0.5
+                pwh = (ps[:, 2:4].sigmoid() * 2) ** 2 * anchors[i]
+                pbox = torch.cat((pxy, pwh), 1).to(device)  # predicted box
+                iou = bbox_iou(pbox.T, tbox[i], x1y1x2y2=False, CIoU=True)  # iou(prediction, target)
+                lbox += (1.0 - iou).mean()  # iou loss
 
             # Obj 计算置信度损失
-            tobj[b, a, gj, gi] = (1.0 - model.gr) + model.gr * giou.detach().clamp(0).type(tobj.dtype)  # giou ratio
+            tobj[b, a, gj, gi] = (1.0 - model.gr) + model.gr * iou.detach().clamp(0).type(tobj.dtype)  # iou ratio
 
             # Class 计算分类损失
             if model.nc > 1:  # cls loss (only if multiple classes)
@@ -268,8 +275,8 @@ def compute_loss(p, targets, model):  # predictions, targets, model
 
         lobj += BCEobj(pi[..., 4], tobj)  # obj loss
 
-    # 乘上每种损失的对应权重
-    lbox *= h['giou']
+    # 乘上每种损失的对应权重: λbox、λobj、λcls
+    lbox *= h['box']
     lobj *= h['obj']
     lcls *= h['cls']
 
@@ -348,8 +355,8 @@ def non_max_suppression(prediction, conf_thres=0.1, iou_thres=0.6,
     output = [None] * prediction.shape[0]
     for xi, x in enumerate(prediction):  # image index, image inference 遍历每张图片
         # Apply constraints
-        x = x[x[:, 4] > conf_thres]  # confidence 根据obj confidence虑除背景目标
-        x = x[((x[:, 2:4] > min_wh) & (x[:, 2:4] < max_wh)).all(1)]  # width-height 虑除小目标
+        x = x[x[:, 4] > conf_thres]  # confidence 根据obj confidence滤除背景目标
+        x = x[((x[:, 2:4] > min_wh) & (x[:, 2:4] < max_wh)).all(1)]  # width-height 滤除小目标
 
         # If none remain process next image
         if not x.shape[0]:

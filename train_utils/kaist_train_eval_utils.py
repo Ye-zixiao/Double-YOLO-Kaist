@@ -25,7 +25,7 @@ def train_one_epoch(model,  # 网络模型对象
     model.train()
     metric_logger = utils.MetricLogger(delimiter="  ")
     metric_logger.add_meter('lr', utils.SmoothedValue(window_size=1, fmt="{value:.6f}"))
-    header = 'Epoch: [{}]'.format(epoch)
+    header = 'Epoch: [{}]'.format(epoch) # 当前为第几轮
 
     # 2、设置学习率自动调整器
     lr_scheduler = None
@@ -111,7 +111,7 @@ def train_one_epoch(model,  # 网络模型对象
         now_lr = optimizer.param_groups[0]["lr"]
         metric_logger.update(lr=now_lr)
 
-        if ni % accumulate == 0 and lr_scheduler is not None:  # 第一轮使用warmup训练方式
+        if ni % accumulate == 0 and lr_scheduler is not None:
             lr_scheduler.step()
 
     return mloss, now_lr
@@ -125,8 +125,8 @@ def evaluate(model, dataloader, coco=None, device=None):
     metric_logger = utils.MetricLogger(delimiter="  ")
     header = "Test: "
 
-    # 2、设置cocotools工具？
-    if coco is None:
+    # 2、设置cocotools工具
+    if coco is None: # coco还是静态对象？
         coco = get_coco_api_from_dataset(dataloader.dataset)
     iou_types = _get_iou_types(model)
     coco_evaluator = CocoEvaluator(coco, iou_types)

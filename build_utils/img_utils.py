@@ -4,7 +4,7 @@ import numpy as np
 
 def letterbox(img: np.ndarray,
               new_shape=(416, 416),
-              color=(114, 114, 114),
+              color=(0, 0, 0),
               auto=True,
               scale_fill=False,
               scale_up=True):

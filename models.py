@@ -1,3 +1,5 @@
+from build_utils.utils import get_yolo_layers
+from build_utils import torch_utils
 from build_utils.parse_config import *
 from build_utils.layers import *
 
@@ -9,8 +11,9 @@ def create_modules(modules_defs: list, img_size):
     :param img_size: 图像大小
     :return: 模型对象、后续需要使用的层输出索引以及网络元信息字典组成的元组
     '''
+
     img_size = [img_size] * 2 if isinstance(img_size, int) else img_size
-    net_infos = modules_defs[0]  # modules_defs中第一个字典记录网络的纵览信息
+    net_infos = modules_defs[0]  # modules_defs中第一个字典记录网络的元信息
     modules_defs.pop(0)
 
     pre_out_filters = [3]  # 记录前一个网络层的输出通道数in_channels，即深度
@@ -22,9 +25,9 @@ def create_modules(modules_defs: list, img_size):
         modules = nn.Sequential()
 
         if mdef['type'] == "convolutional":
-            bn = mdef['batch_normalize']  # 是否加入BN层，0或1
-            filters = mdef['filters']  # out_channels
-            k = mdef['size']  # 卷积核
+            bn = mdef['batch_normalize']  # 是否加入BN层
+            filters = mdef['filters']  # 输出通道数
+            k = mdef['size']  # 卷积核大小
             stride = mdef['stride'] if 'stride' in mdef else (mdef['stride_y'], mdef['stride_x'])
             if isinstance(k, int):
                 modules.add_module("Conv2d", nn.Conv2d(
@@ -40,13 +43,20 @@ def create_modules(modules_defs: list, img_size):
 
             if bn:
                 modules.add_module("BatchNorm2d", nn.BatchNorm2d(filters))
-            else:
-                routs.append(i)  # 实际上这一步我感觉没有必要
-
             if mdef['activation'] == 'leaky':
                 modules.add_module("activation", nn.LeakyReLU(0.1, inplace=True))
             elif mdef['activation'] == 'mish':
                 modules.add_module("activation", nn.Mish(inplace=True))
+
+        elif mdef['type'] == 'inception':
+            modules = Inception(in_channels=pre_out_filters[-1], n1x1=mdef['n1x1'],
+                                n3x3_reduce=mdef['n3x3_reduce'], n3x3=mdef['n3x3'],
+                                n5x5_reduce=mdef['n5x5_reduce'], n5x5=mdef['n5x5'],
+                                pool_proj=mdef['pool_proj'])
+
+        elif mdef['type'] == "se":
+            modules = SqueezeExcitation(in_channels=pre_out_filters[-1],
+                                        squeeze_factor=mdef['squeeze_factor'])
 
         elif mdef['type'] == "maxpool":
             k = mdef['size']
@@ -69,7 +79,8 @@ def create_modules(modules_defs: list, img_size):
             layers = mdef['from']
             filters = pre_out_filters[-1]
             # shortcut的from字段所指向的网络层输出必须保存
-            routs.append(i + layers[0])
+            # routs.append(i + layers[0])
+            routs.extend([i + l if l < 0 else l for l in layers])
             modules = WeightedFeatureFusion(layers=[i + l if l < 0 else l for l in layers],
                                             weight="weights_type" in mdef)
 
@@ -99,15 +110,8 @@ def create_modules(modules_defs: list, img_size):
 
         module_list.append(modules)
         pre_out_filters.append(filters)
-        # # 因为我们使用的YOLOv3模型可能有两个图像数据输入，在这种情况下第75个网络层就有可能
-        # # 是第二张图像数据输入后第一个需要处理的卷积层，因此需要注意下这个层的输入通道数的设置
-        # if "second_index" in net_infos:
-        #     if net_infos['second_index'] - 1 == i:
-        #         saved_filter = pre_out_filters[-1]
-        #         pre_out_filters[-1] = 3
-        #     elif net_infos['second_index'] == i:
-        #         pre_out_filters[-2] = saved_filter
 
+    # 记录那些层的输出需要被后续层的运算继续使用
     routs_binary = [False] * len(modules_defs)
     for i in routs:
         routs_binary[i] = True
@@ -221,6 +225,7 @@ class YOLO(nn.Module):
         :return: 1、训练时，输出预测器predictor(Conv2d)生成的矩阵组成的列表p，长度为3
                  2、测试时，输出YOLO层生成的记录多个bbox参数的矩阵，以及上述预测器的输出p
         '''
+
         di = "second_index" in self.net_info and y is not None
         yolo_out, out = [], []
 

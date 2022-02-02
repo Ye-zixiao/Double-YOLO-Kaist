@@ -6,7 +6,8 @@ Kaist_YOLO/*
 results/*
 weights/*
 runs/*
+tmp
 
-test.py
+
 
 !Kaist/trans_kaist2voc.py

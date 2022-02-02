@@ -1,4 +1,5 @@
 from torch.utils.tensorboard import SummaryWriter
+from build_utils.utils import check_file
 from train_utils import kaist_train_eval_utils as train_util
 from train_utils import get_coco_api_from_dataset
 from build_utils.kaist_dataset import *
@@ -60,8 +61,11 @@ def train(hyp):
     train_path = data_dict["train"]
     test_path = data_dict["valid"]
     nc = 1 if opt.single_cls else int(data_dict["classes"])  # number of classes
-    hyp["cls"] *= nc / 1  # update coco-tuned hyp['cls'] to current dataset
-    hyp["obj"] *= imgsz_test / 32
+
+    # 下面几个损失函数权重系数的调参挺有用的
+    hyp["cls"] *= nc / 80  # update coco-tuned hyp['cls'] to current dataset
+    hyp["obj"] *= imgsz_test / 320  # 置信度损失权重可能越大越好？
+    print(f"hyp['box']: {hyp['box']:0.3f}, hyp['obj']: {hyp['obj']:0.3f}. hyp['cls']: {hyp['cls']:0.3f}")
 
     # 6、创建网络模型对象
     model = YOLO(cfg).to(device)
@@ -78,9 +82,12 @@ def train(hyp):
 
     # 7、创建优化器
     pg = [p for p in model.parameters() if p.requires_grad]
-    # optimizer = optim.SGD(pg, lr=hyp["lr0"], momentum=hyp["momentum"],
-    #                       weight_decay=hyp["weight_decay"], nesterov=True)
-    optimizer = optim.Adam(pg, lr=hyp["lr0"], weight_decay=hyp["weight_decay"])
+    if opt.sgd:
+        optimizer = optim.SGD(pg, lr=hyp["lr0"], momentum=hyp["momentum"],
+                              weight_decay=hyp["weight_decay"], nesterov=True)
+    else:
+        optimizer = optim.Adam(pg, lr=hyp["lr0"], betas=(hyp['momentum'], 0.999),
+                               weight_decay=hyp['weight_decay'])
 
     # 8、加载网络权重，使用权重文件中记录的数据初始化相关变量
     start_epoch = 0
@@ -130,24 +137,26 @@ def train(hyp):
                                              augment=True,
                                              hyp=hyp,  # augmentation hyperparameters
                                              rect=opt.rect,  # rectangular training 默认为False
+                                             snowflake=False,
                                              single_cls=opt.single_cls)
     # 验证集的图像尺寸指定为img_size(512)
     val_dataset = LoadKaistImagesAndLabels(test_path, imgsz_test, batch_size,
                                            hyp=hyp,
-                                           rect=False,
+                                           rect=True,
+                                           snowflake=False,
                                            single_cls=opt.single_cls)
 
     nw = min([os.cpu_count(), batch_size if batch_size > 1 else 0, 8])  # number of workers
     train_dataloader = torch.utils.data.DataLoader(train_dataset,
                                                    batch_size=batch_size,
-                                                   num_workers=0,
+                                                   num_workers=nw,
                                                    # Shuffle=True unless rectangular training is used
                                                    shuffle=not opt.rect,
                                                    pin_memory=True,
                                                    collate_fn=train_dataset.collate_fn)
     val_datasetloader = torch.utils.data.DataLoader(val_dataset,
                                                     batch_size=batch_size,
-                                                    num_workers=0,
+                                                    num_workers=nw,
                                                     pin_memory=True,
                                                     collate_fn=val_dataset.collate_fn)
 
@@ -188,13 +197,13 @@ def train(hyp):
             result_info = train_util.evaluate(model, val_datasetloader,
                                               coco=coco, device=device)
 
-            coco_mAP = result_info[0]
-            voc_mAP = result_info[1]
-            coco_mAR = result_info[8]
+            coco_mAP = result_info[0]  # (AP) @[ IoU=0.50:0.95 | area=   all | maxDets=100 ]
+            voc_mAP = result_info[1]  # (AP) @[ IoU=0.50      | area=   all | maxDets=100 ]
+            coco_mAR = result_info[8]  # (AR) @[ IoU=0.50:0.95 | area=   all | maxDets=100 ]
 
             # 将测试得到的性能指标数据记录到tensorboard中
             if tb_writer:
-                tags = ['train/giou_loss', 'train/obj_loss', 'train/cls_loss', 'train/loss', "learning_rate",
+                tags = ['train/box_loss', 'train/obj_loss', 'train/cls_loss', 'train/loss', "learning_rate",
                         "mAP@[IoU=0.50:0.95]", "mAP@[IoU=0.5]", "mAR@[IoU=0.50:0.95]"]
 
                 for x, tag in zip(mloss.tolist() + [lr, coco_mAP, voc_mAP, coco_mAR], tags):
@@ -237,26 +246,30 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
 
     # 下面几个参数是我们重点需要配置的参数
-    parser.add_argument('--epochs', type=int, default=30)
-    parser.add_argument('--batch-size', type=int, default=3)
-    parser.add_argument('--hyp', type=str, default='config/hyp.yaml', help='hyperparameters path')
-    parser.add_argument('--cfg', type=str, default='config/kaist_dyolov4.cfg', help="*.cfg path")
-    parser.add_argument('--single-cls', type=bool, default=True, help='train as single-class dataset')
-    parser.add_argument('--weights', type=str, default='weights/pretrained_dyolov4.pt', help='initial weights path')
-    parser.add_argument('--name', default='kaist_dyolov4', help='renames results.txt to results_name.txt if supplied')
-    parser.add_argument('--freeze-layers', type=int, default=209,
+    parser.add_argument('--epochs', type=int, default=50)
+    parser.add_argument('--batch-size', type=int, default=4)
+    parser.add_argument('--hyp', type=str, default='config/hyp.scratch.yaml', help='hyperparameters path')
+    parser.add_argument('--cfg', type=str, default='config/kaist_dyolov3_fshare_global_concat_se3.cfg',
+                        help="*.cfg path")
+    parser.add_argument('--weights', type=str, default='weights/pretrained_dyolov3_fshare_global_concat_se3.pt',
+                        help='initial weights path')
+    parser.add_argument('--name', default='kaist_dyolov_fshare_global_concat_se3',
+                        help='renames results.txt to results_name.txt if supplied')
+    parser.add_argument('--freeze-layers', type=int, default=161,
                         help='Freeze feature extract layers, -1 means no layers will be froze')
+    parser.add_argument('--device', default='cuda:0', help='device id (i.e. 0 or 0,1 or cpu)')
 
     # 下面几个参数几乎不需要改动
+    parser.add_argument('--sgd', action='store_true', help='use torch.optim.SGD() optimizer')
+    parser.add_argument('--single-cls', type=bool, default=True, help='train as single-class dataset')
     parser.add_argument('--data', type=str, default='data/kaist_data.data', help='*.data path')
     parser.add_argument('--multi-scale', type=bool, default=True,
                         help='adjust (67%% - 150%%) img_size every 10 batches')
     parser.add_argument('--img-size', type=int, default=512, help='test size')
-    parser.add_argument('--rect', type=bool, default=False, help='rectangular training')  # 不要开启矩形变换，因为矩形变换的代码有错误
+    parser.add_argument('--rect', action='store_true', help='rectangular training')  # 不要开启矩形变换，因为矩形变换的代码有错误
     parser.add_argument('--savebest', type=bool, default=True, help='only save best checkpoint')
     parser.add_argument('--notest', action='store_true', help='only test final epoch')
     parser.add_argument('--cache-images', type=bool, default=False, help='cache images for faster training')
-    parser.add_argument('--device', default='cuda:0', help='device id (i.e. 0 or 0,1 or cpu)')
     opt = parser.parse_args()
 
     # 检查文件是否存在
@@ -265,7 +278,7 @@ if __name__ == '__main__':
     opt.hyp = check_file(opt.hyp)
     print(opt)
 
-    with open(opt.hyp) as f:
+    with open(opt.hyp, encoding='utf-8') as f:
         hyp = yaml.load(f, Loader=yaml.FullLoader)
 
     print('Start Tensorboard with "tensorboard --logdir=runs", view at http://localhost:6006/')

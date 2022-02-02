@@ -1,4 +1,7 @@
 classes=1
 train=data/kaist_train_data.txt
 valid=data/kaist_val_data.txt
+test=data/kaist_test_data.txt
+night_test=data/kaist_night_test_data.txt
+day_test=data/kaist_day_test_data.txt
 names=data/kaist_data_label.names

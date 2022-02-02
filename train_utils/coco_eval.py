@@ -27,6 +27,7 @@ class CocoEvaluator(object): # coco性能指标评估器？
         self.eval_imgs = {k: [] for k in iou_types}
 
     def update(self, predictions):
+        # CocoEvaluator在每次验证集预测完成之后就会接收到一个预测结果字典
         img_ids = list(np.unique(list(predictions.keys())))
         self.img_ids.extend(img_ids)
 

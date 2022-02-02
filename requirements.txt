@@ -1,0 +1,8 @@
+numpy
+torch
+tensorboard
+scipy
+opencv_python
+pycocotools
+matplotlib
+tqdm

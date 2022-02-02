@@ -8,8 +8,8 @@ from pycocotools.coco import COCO
 
 def convert_to_coco_api(ds):
     coco_ds = COCO()
-    # annotation IDs need to start at 1, not 0
-    ann_id = 1
+
+    ann_id = 1  # annotation IDs need to start at 1, not 0
     dataset = {'images': [], 'categories': [], 'annotations': []}
     categories = set()
     # 遍历dataset中的每张图像
@@ -17,20 +17,24 @@ def convert_to_coco_api(ds):
         # find better way to get target
         targets, shapes = ds.coco_index(img_idx)
         # targets: [num_obj, 6] , that number 6 means -> (img_index, obj_index, x, y, w, h)
+
+        # 记录每一张图片的大小、ID信息
         img_dict = {}
         img_dict['id'] = img_idx
         img_dict['height'] = shapes[0]
         img_dict['width'] = shapes[1]
         dataset['images'].append(img_dict)
 
+        # 记录每一张图片中的所有标注边界框信息
         for obj in targets:
             ann = {}
             ann["image_id"] = img_idx
+
             # 将相对坐标转为绝对坐标
             # box (x, y, w, h)
             boxes = obj[1:]
             # (x, y, w, h) to (xmin, ymin, w, h)
-            boxes[:2] -= 0.5*boxes[2:]
+            boxes[:2] -= 0.5 * boxes[2:]
             boxes[[0, 2]] *= img_dict["width"]
             boxes[[1, 3]] *= img_dict["height"]
             boxes = boxes.tolist()
@@ -44,9 +48,12 @@ def convert_to_coco_api(ds):
             dataset["annotations"].append(ann)
             ann_id += 1
 
+    # 记录验证集中有多少个类别
     dataset['categories'] = [{'id': i} for i in sorted(categories)]
-    coco_ds.dataset = dataset
-    coco_ds.createIndex()
+
+    # 将上述信息注册到COCO类对象中
+    coco_ds.dataset = dataset  # 为COCO性能指标计算类提供验证集的相应标注信息
+    coco_ds.createIndex()  # 为每一张验证图片记录相关的索引信息
     return coco_ds
 
 
