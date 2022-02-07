@@ -8,31 +8,11 @@ label_json_path = "data/kaist_voc_classes.json"
 kaist_voc_root = "Kaist_VOC"
 yolo_root = "Kaist_YOLO"
 
-train_txt = "train.txt"
-val_txt = "val.txt"
-test_txt = "test.txt"
-night_test_txt = "night_test.txt"
-day_test_txt = "day_test.txt"
+if not os.path.exists(yolo_root):
+    os.makedirs(yolo_root)
 
 voc_images_path = os.path.join(kaist_voc_root, "JPEGImages")
 voc_xml_path = os.path.join(kaist_voc_root, "Annotations")
-train_txt_path = os.path.join(kaist_voc_root, "ImageSets/Main", train_txt)
-val_txt_path = os.path.join(kaist_voc_root, "ImageSets/Main", val_txt)
-test_txt_path = os.path.join(kaist_voc_root, "ImageSets/Main", test_txt)
-night_test_txt_path = os.path.join(kaist_voc_root, "ImageSets/Main", night_test_txt)
-day_test_txt_path = os.path.join(kaist_voc_root, "ImageSets/Main", day_test_txt)
-
-# 检查文件/文件夹都是否存在
-assert os.path.exists(voc_images_path), "VOC images path not exist..."
-assert os.path.exists(voc_xml_path), "VOC xml path not exist..."
-assert os.path.exists(train_txt_path), "VOC train txt file not exist..."
-assert os.path.exists(val_txt_path), "VOC val txt file not exist..."
-assert os.path.exists(test_txt_path), "VOC test txt file not exist..."
-assert os.path.exists(night_test_txt_path), "VOC night test txt file not exist..."
-assert os.path.exists(day_test_txt_path), "VOC day test txt file not exist..."
-assert os.path.exists(label_json_path), "label_json_path does not exist..."
-if not os.path.exists(yolo_root):
-    os.makedirs(yolo_root)
 
 
 def parse_xml_to_dict(xml):
@@ -160,39 +140,24 @@ def create_class_names(class_dict: dict):
 
 
 def main():
-    # read class_indict
+    # 读取类别索引映射文件
     json_file = open(label_json_path, 'r')
     class_dict = json.load(json_file)
 
-    # 读取train.txt中的所有行信息，删除空行
-    with open(train_txt_path, "r") as r:
-        train_file_names = [i for i in r.read().splitlines() if len(i.strip()) > 0]
-    # voc信息转yolo，并将图像文件复制到相应文件夹
-    translate_info(train_file_names, yolo_root, class_dict, "train")
+    # 指定VOC数据集txt文件路径
+    voc_txt_names = ['train', 'val', 'test', 'day_test', 'night_test']
+    voc_txt_files = [tn + '.txt' for tn in voc_txt_names]
+    txt_paths = [os.path.join(kaist_voc_root, "ImageSets/Main", x) for x in voc_txt_files]
+    for tp in txt_paths:
+        assert os.path.exists(tp), f"VOC image set txt file '{tp}' not exist!"
 
-    # 读取val.txt中的所有行信息，删除空行
-    with open(val_txt_path, "r") as r:
-        val_file_names = [i for i in r.read().splitlines() if len(i.strip()) > 0]
-    # voc信息转yolo，并将图像文件复制到相应文件夹
-    translate_info(val_file_names, yolo_root, class_dict, "val")
-
-    # # 读取test.txt中的所有行信息，删除空行
-    with open(test_txt_path, "r") as r:
-        test_file_names = [i for i in r.read().splitlines() if len(i.strip()) > 0]
-    # # voc信息转yolo，并将图像文件复制到相应文件夹
-    translate_info(test_file_names, yolo_root, class_dict, "test")
-
-    # 读取night_test.txt中的所有行信息，删除空行
-    with open(night_test_txt_path, "r") as r:
-        night_test_file_names = [i for i in r.read().splitlines() if len(i.strip()) > 0]
-    # voc信息转yolo，并将图像文件复制到相应文件夹
-    translate_info(night_test_file_names, yolo_root, class_dict, "night_test")
-
-    # 读取day_test.txt中的所有行信息，删除空行
-    with open(day_test_txt_path, "r") as r:
-        day_test_file_names = [i for i in r.read().splitlines() if len(i.strip()) > 0]
-    # voc信息转yolo，并将图像文件复制到相应文件夹
-    translate_info(day_test_file_names, yolo_root, class_dict, "day_test")
+    # 将VOC数据集转换成YOLO数据集格式
+    for i, (tp, tn) in zip(txt_paths, voc_txt_names):
+        # 读取.txt中的所有行信息，删除空行
+        with open(tp, "r") as r:
+            train_file_names = [i for i in r.read().splitlines() if len(i.strip()) > 0]
+        # 将voc信息转yolo，并将图像文件复制到相应文件夹
+        translate_info(train_file_names, yolo_root, class_dict, tn)
 
     # 创建kaist_data_label.names文件
     create_class_names(class_dict)

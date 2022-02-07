@@ -1,4 +1,4 @@
-from build_utils.snowflake import snowflake_cutout
+from build_utils.snowflake import snowflake_cutout, clahe_image
 from build_utils.img_utils import letterbox
 from build_utils.utils import xyxy2xywh
 from torch.utils.data import Dataset
@@ -44,7 +44,8 @@ class LoadKaistImagesAndLabels(Dataset):
                  hyp=None,  # 超参数字典
                  rect=False,  # 是否启动矩形框方式训练使得不同批次的图像具有不同的大小
                  single_cls=False,  # 数据集是否只有一种目标类型
-                 snowflake=True,  # 是否开启雪花变化
+                 snowflake=False,  # 是否开启雪花变化
+                 clahe=False,  # TODO: 暂时加入的选项
                  pad=0.0):
         # 1、检查数据指定文件是否存在，若存在获取相应可见光和红外光图像的文件名
         #   注意data_txt_path路径指向的文件中没有加入visible和lwir单词
@@ -78,6 +79,7 @@ class LoadKaistImagesAndLabels(Dataset):
         self.augment = augment
         self.hyp = hyp
         self.rect = rect
+        self.clahe = clahe
         self.snowflake = snowflake
         self.quadra_trans = self.augment and not self.rect  # 是否开启4合变换
 
@@ -306,6 +308,9 @@ class LoadKaistImagesAndLabels(Dataset):
         if self.snowflake:
             # 雪花cutout变换，注意这里的标注信息是绝对xyxy形式
             v_img, l_img, labels = snowflake_cutout(v_img, l_img, labels, xywh=False)
+        elif self.clahe:
+            # TODO: 暂时加入的选项
+            v_img, l_img = clahe_image(v_img, l_img)
 
         return v_img, l_img, labels, shapes
 

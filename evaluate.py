@@ -206,7 +206,7 @@ def validate(opt, hyp):
     test_path = data_dict[opt.test_type]
 
     val_dataset = LoadKaistImagesAndLabels(test_path, img_size, batch_size,
-                                           hyp=hyp, rect=True, snowflake=False)
+                                           hyp=hyp, rect=True, snowflake=False, clahe=opt.clahe)
     val_dataset_loader = DataLoader(val_dataset, batch_size=batch_size,
                                     shuffle=False, num_workers=nw, pin_memory=True,
                                     collate_fn=val_dataset.collate_fn)
@@ -295,11 +295,12 @@ if __name__ == '__main__':
     parser.add_argument('--img-size', type=int, default=512, help='test size')
     parser.add_argument('--batch-size', default=8, type=int, metavar='N', help='batch size when validation.')
     parser.add_argument('--cfg', type=str, help="*.cfg path",
-                        default='config/kaist_dyolov3_fshare_global_add_sl.cfg')
+                        default='config/kaist_dyolov3_cspdarknet_fshare_global_concat_se3.cfg')
     parser.add_argument('--weights', type=str, help='detecting weights',
-                        default='results/Double-YOLOv3-Fshare-Global-Add-SL102/kaist_dyolov3_fshare_global_add_sl_best.pt')
+                        default='results/Double-YOLOv3-CSPDarknet-Fshare-Global-Concat-SE3-102/kaist_dyolov3_cspdarknet_fshare_global_concat_se3_best.pt')
     parser.add_argument('--npy-path', type=str, help="save recall, precision, fppi, mr into this npy file",
-                        default='results/Double-YOLOv3-Fshare-Global-Add-SL102/rec-prec.fppi-mr.npy')
+                        default='')
+    parser.add_argument('--clahe', action='store_true', help="use clahe to process images")
     opt = parser.parse_args()
 
     with open(opt.hyp, encoding='utf-8') as f:

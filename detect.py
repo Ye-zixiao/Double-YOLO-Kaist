@@ -1,5 +1,6 @@
 from build_utils import img_utils, torch_utils, utils
 from build_utils.draw_box_utils import draw_box
+from build_utils.snowflake import clahe_image
 from models import YOLO
 from typing import List
 from cv2 import cv2
@@ -22,7 +23,7 @@ plt.rcParams['axes.unicode_minus'] = False  # 用来正常显示负号
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 
 
-def load_images(v_img_path, l_img_path, input_size, device):
+def load_images(v_img_path, l_img_path, input_size, device, clahe=False):
     assert os.path.exists(v_img_path), "visible image '{}' not exist.".format(v_img_path)
     assert os.path.exists(l_img_path), "infrared image '{}' not exist.".format(l_img_path)
 
@@ -31,6 +32,9 @@ def load_images(v_img_path, l_img_path, input_size, device):
     l_img_o = cv2.imread(l_img_path)
     v_img = img_utils.letterbox(v_img_o, new_shape=input_size, auto=True, color=(0, 0, 0))[0]
     l_img = img_utils.letterbox(l_img_o, new_shape=input_size, auto=True, color=(0, 0, 0))[0]
+
+    if clahe:
+        v_img, l_img = clahe_image(v_img, l_img)
 
     # 将两张图像从BGR-HWC转换成RGB-CHW的组织形式
     v_img = v_img[:, :, ::-1].transpose(2, 0, 1)
@@ -95,7 +99,8 @@ def detect(img_path_list: List):
             # 加载可见光图像、红外光图像，以及对应张量形式的数据
             v_img_o, l_img_o, v_img, l_img = load_images(*get_image_paths(img_path),
                                                          input_size=opt.img_size,
-                                                         device=device)
+                                                         device=device,
+                                                         clahe=opt.clahe)
 
             # 将图像输入网络进行推理
             t1 = torch_utils.time_synchronized()
@@ -148,19 +153,25 @@ def detect(img_path_list: List):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
 
-    parser.add_argument('--model-name', type=str, default='Double-YOLOv3-Fshare-Global-Concat-SE3', help='detect model name')
+    parser.add_argument('--model-name', type=str, default='Double-YOLOv3-CSPDarknet-Fshare-Global-CSE',
+                        help='detect model name')
     parser.add_argument('--src', type=str, default='imgs/ori/I00200_lwir.jpg', help='detect image path or name')
-    parser.add_argument('--save', type=str, default='', help='result saved dir')
-    parser.add_argument('--cfg', type=str, default='config/kaist_dyolov3_fshare_global_concat_se3.cfg', help='model config file path')
-    parser.add_argument('--weight', type=str, default='results/Double-YOLOv3-Fshare-Global-Concat-SE3-102/kaist_dyolov3_fshare_global_concat_se3_best.pt',
+    parser.add_argument('--save', type=str,
+                        default='results/Double-YOLOv3-CSPDarknet-Fshare-Global-CSE3-Snow-102/imgs',
+                        help='result saved dir')
+    parser.add_argument('--cfg', type=str, default='config/kaist_dyolov3_cspdarknet_fshare_global_concat_se3.cfg',
+                        help='model config file path')
+    parser.add_argument('--weight', type=str,
+                        default='results/Double-YOLOv3-CSPDarknet-Fshare-Global-CSE3-Snow-102/kaist_dyolov3_cspdarknet_snowflake_best.pt',
                         help='initial weights path')
+    parser.add_argument('--clahe', action='store_true', help="use clahe to process images")
     parser.add_argument('--classes-json', type=str, default='data/kaist_voc_classes.json',
                         help='classes json file path')
     parser.add_argument('--img-size', type=int, default=512, help='detect image size')
     opt = parser.parse_args()
 
-    # root = "imgs/ori/"
-    root = "Kaist_YOLO/test/images/"
+    root = "imgs/ori/"
+    # root = "Kaist_YOLO/test/images/"
     img_path_list = [os.path.join(root, x) for x in os.listdir(root) if x.endswith('_visible.jpg')]
     random.shuffle(img_path_list)
     detect(img_path_list[:40])

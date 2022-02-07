@@ -15,6 +15,54 @@ import os
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 
 
+def load_darknet_weights(model, weights, cutoff=-1):
+    '''
+    试图从后缀为.weights的np二进制权重文件中加载网络权重
+    :param model: 网络模型对象
+    :param weights: 以.weights为后缀的权重文件路径
+    :param cutoff: 试图加载的模型组合开区间的右侧索引
+    :return:
+    '''
+
+    # 读取权重文件
+    with open(weights, 'rb') as f:
+        # Read Header https://github.com/AlexeyAB/darknet/issues/2914#issuecomment-496675346
+        model.version = np.fromfile(f, dtype=np.int32, count=3)  # (int32) version info: major, minor, revision
+        model.seen = np.fromfile(f, dtype=np.int64, count=1)  # (int64) number of images seen during training
+        weights = np.fromfile(f, dtype=np.float32)  # the rest are weights
+
+    ptr = 0
+    for i, (mdef, module) in enumerate(zip(model.module_defs[:cutoff], model.module_list[:cutoff])):
+        if mdef['type'] == 'convolutional':
+            conv = module[0]
+            if mdef['batch_normalize']:
+                # Load BN bias, weights, running mean and running variance
+                bn = module[1]
+                nb = bn.bias.numel()  # number of biases
+                # Bias
+                bn.bias.data.copy_(torch.from_numpy(weights[ptr:ptr + nb]).view_as(bn.bias))
+                ptr += nb
+                # Weight
+                bn.weight.data.copy_(torch.from_numpy(weights[ptr:ptr + nb]).view_as(bn.weight))
+                ptr += nb
+                # Running Mean
+                bn.running_mean.data.copy_(torch.from_numpy(weights[ptr:ptr + nb]).view_as(bn.running_mean))
+                ptr += nb
+                # Running Var
+                bn.running_var.data.copy_(torch.from_numpy(weights[ptr:ptr + nb]).view_as(bn.running_var))
+                ptr += nb
+            else:
+                # Load conv. bias
+                nb = conv.bias.numel()
+                conv_b = torch.from_numpy(weights[ptr:ptr + nb]).view_as(conv.bias)
+                conv.bias.data.copy_(conv_b)
+                ptr += nb
+            # Load conv. weights
+            nw = conv.weight.numel()  # number of weights
+            conv.weight.data.copy_(torch.from_numpy(weights[ptr:ptr + nw]).view_as(conv.weight))
+            ptr += nw
+
+
 def train(hyp):
     # 1、打印训练设备信息
     device = torch.device(opt.device if torch.cuda.is_available() else "cpu")
@@ -64,21 +112,18 @@ def train(hyp):
 
     # 下面几个损失函数权重系数的调参挺有用的
     hyp["cls"] *= nc / 80  # update coco-tuned hyp['cls'] to current dataset
-    hyp["obj"] *= imgsz_test / 320  # 置信度损失权重可能越大越好？
-    print(f"hyp['box']: {hyp['box']:0.3f}, hyp['obj']: {hyp['obj']:0.3f}. hyp['cls']: {hyp['cls']:0.3f}")
+    hyp["obj"] *= imgsz_test / 320 * opt.obj_gain  # TODO: 置信度损失权重可能越大越好？
+    print(f"hyp['box']: {hyp['box']:0.3f}, hyp['obj']: {hyp['obj']:0.3f}. hyp['cls']: {hyp['cls']:0.3f},"
+          f" {('CIoU Loss' if 'ciou' in hyp else 'GIoU Loss')}")
 
-    # 6、创建网络模型对象
+    # 6、创建网络模型对象，冻结部分网络结构的权重参数
     model = YOLO(cfg).to(device)
-
-    # 根据是否需要只针对预测分支进行训练的要求，冻结特征提取网络层的权重参数
     if opt.freeze_layers >= 0:
         # 将Double-YOLO-Kaist的前149层（即Darknet特征提取网络部分）的参数冻结
         darknet_end_layers = opt.freeze_layers  # 对于dyolov3而言是默认是149
         for idx in range(darknet_end_layers + 1):
             for parameter in model.module_list[idx].parameters():
                 parameter.requires_grad_(False)
-    else:
-        pass
 
     # 7、创建优化器
     pg = [p for p in model.parameters() if p.requires_grad]
@@ -93,13 +138,14 @@ def train(hyp):
     start_epoch = 0
     best_map = 0.0
     if weights.endswith(".pt") or weights.endswith(".pth"):
+        print("load dict model weights from '{}'".format(weights))
         ckpt = torch.load(weights, map_location=device)
 
         # 尝试加载网络模型权重参数
         try:
             ckpt["model"] = {k: v for k, v in ckpt["model"].items()
-                             if model.state_dict()[k].numel() == v.numel()}
-            model.load_state_dict(ckpt["model"], strict=False)
+                             if k in model.state_dict() and model.state_dict()[k].numel() == v.numel()}
+            miss, unexpected = model.load_state_dict(ckpt["model"], strict=False)
         except KeyError as e:
             s = "{} is not compatible with {}. Specify --weights '' or specify a --cfg compatible with {}. " \
                 .format(opt.weights, opt.cfg, opt.weights)
@@ -107,7 +153,7 @@ def train(hyp):
 
         # 尝试加载训练时所有的优化器参数
         if ckpt["optimizer"] is not None:
-            optimizer.load_state_dict(ckpt["optimizer"])
+            # optimizer.load_state_dict(ckpt["optimizer"])
             if "best_map" in ckpt.keys():
                 best_map = ckpt["best_map"]
 
@@ -124,6 +170,9 @@ def train(hyp):
             epochs += ckpt['epoch']  # finetune additional epochs
 
         del ckpt
+    elif weights.endswith(".weights"):
+        print("load binary model weights from '{}'".format(weights))
+        load_darknet_weights(model, weights, cutoff=opt.cutoff)
 
     # 9、创建学习率自动调整器并作出相关初始化
     # Scheduler https://arxiv.org/pdf/1812.01187.pdf
@@ -137,7 +186,7 @@ def train(hyp):
                                              augment=True,
                                              hyp=hyp,  # augmentation hyperparameters
                                              rect=opt.rect,  # rectangular training 默认为False
-                                             snowflake=False,
+                                             snowflake=opt.snow,
                                              single_cls=opt.single_cls)
     # 验证集的图像尺寸指定为img_size(512)
     val_dataset = LoadKaistImagesAndLabels(test_path, imgsz_test, batch_size,
@@ -164,12 +213,6 @@ def train(hyp):
     model.nc = nc  # attach number of classes to model
     model.hyp = hyp  # attach hyperparameters to model
     model.gr = 1.0  # giou loss ratio (obj_loss = 1.0 or giou)
-    # 计算每个类别的目标个数，并计算每个类别的比重
-    # model.class_weights = labels_to_class_weights(train_dataset.labels, nc).to(device)  # attach class weights
-
-    # start training
-    # caching val_data when you have plenty of memory(RAM)
-    # coco = None
     coco = get_coco_api_from_dataset(val_dataset)
 
     # 12、根据剩余训练轮次数继续或者开始网络模型对象的训练
@@ -221,7 +264,7 @@ def train(hyp):
             if coco_mAP > best_map:
                 best_map = coco_mAP
 
-            if not opt.savebest:  # 每轮次都记录一下网络模型权重参数
+            if not opt.save_best:  # 每轮次都记录一下网络模型权重参数
                 with open(results_file, 'r') as f:
                     save_files = {
                         'model': model.state_dict(),
@@ -249,15 +292,21 @@ if __name__ == '__main__':
     parser.add_argument('--epochs', type=int, default=50)
     parser.add_argument('--batch-size', type=int, default=4)
     parser.add_argument('--hyp', type=str, default='config/hyp.scratch.yaml', help='hyperparameters path')
-    parser.add_argument('--cfg', type=str, default='config/kaist_dyolov3_fshare_global_concat_se3.cfg',
+    parser.add_argument('--cfg', type=str, default='config/kaist_dyolov3_cspdarknet_fshare_global_concat_se3.cfg',
                         help="*.cfg path")
-    parser.add_argument('--weights', type=str, default='weights/pretrained_dyolov3_fshare_global_concat_se3.pt',
+    parser.add_argument('--weights', type=str,
+                        default='weights/pretrained_dyolov3_cspdarknet_fshare_global_concat_se3.pt',
                         help='initial weights path')
-    parser.add_argument('--name', default='kaist_dyolov_fshare_global_concat_se3',
+    parser.add_argument('--name', default='kaist_yolov3_cspdarknet_snowflake',
                         help='renames results.txt to results_name.txt if supplied')
-    parser.add_argument('--freeze-layers', type=int, default=161,
+    parser.add_argument('--freeze-layers', type=int, default=224,
                         help='Freeze feature extract layers, -1 means no layers will be froze')
     parser.add_argument('--device', default='cuda:0', help='device id (i.e. 0 or 0,1 or cpu)')
+
+    # 临时启用的程序参数
+    parser.add_argument('--cutoff', type=int, default=117, help="model weights cutoff")
+    parser.add_argument('--obj-gain', type=int, default=1, help="object loss gain")
+    parser.add_argument('--snow', action='store_true', help='use snowflake change to process images')
 
     # 下面几个参数几乎不需要改动
     parser.add_argument('--sgd', action='store_true', help='use torch.optim.SGD() optimizer')
@@ -267,9 +316,8 @@ if __name__ == '__main__':
                         help='adjust (67%% - 150%%) img_size every 10 batches')
     parser.add_argument('--img-size', type=int, default=512, help='test size')
     parser.add_argument('--rect', action='store_true', help='rectangular training')  # 不要开启矩形变换，因为矩形变换的代码有错误
-    parser.add_argument('--savebest', type=bool, default=True, help='only save best checkpoint')
+    parser.add_argument('--save-best', type=bool, default=True, help='only save best checkpoint')
     parser.add_argument('--notest', action='store_true', help='only test final epoch')
-    parser.add_argument('--cache-images', type=bool, default=False, help='cache images for faster training')
     opt = parser.parse_args()
 
     # 检查文件是否存在
