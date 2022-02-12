@@ -1,17 +1,16 @@
 from build_utils import torch_utils
 from cv2 import cv2
 
-import matplotlib
-import numpy as np
-import torch
 import torch.nn as nn
+import numpy as np
 import torchvision
-
+import matplotlib
+import random
+import torch
 import glob
 import math
-import os
-import random
 import time
+import os
 
 # Set printoptions
 torch.set_printoptions(linewidth=320, precision=5, profile='long')
@@ -67,11 +66,14 @@ def scale_coords(img1_shape, coords, img0_shape, ratio_pad=None):
     :param ratio_pad: 缩放过程中的缩放比例以及pad
     :return:
     """
+
     # Rescale coords (xyxy) from img1_shape to img0_shape
     if ratio_pad is None:  # calculate from img0_shape
+        # 一般只有在训练加载Mosaic图像的时候才会用到这一步
         gain = max(img1_shape) / max(img0_shape)  # gain  = old / new
         pad = (img1_shape[1] - img0_shape[1] * gain) / 2, (img1_shape[0] - img0_shape[0] * gain) / 2  # wh padding
     else:
+        # 一般只有推理加载非Mosaic图像的时候才会用到这一步
         gain = ratio_pad[0][0]
         pad = ratio_pad[1]
 
@@ -245,20 +247,34 @@ def compute_loss(p, targets, model):  # predictions, targets, model
             # 对应匹配到正样本的预测信息
             ps = pi[b, a, gj, gi]  # prediction subset corresponding to targets
 
-            if 'ciou' not in h or h['ciou'] == 0.0:
-                # GIoU 计算GIoU Loss定位损失
-                pxy = ps[:, :2].sigmoid()
-                pwh = ps[:, 2:4].exp().clamp(max=1E3) * anchors[i]
-                pbox = torch.cat((pxy, pwh), 1)  # predicted box
-                iou = bbox_iou(pbox.t(), tbox[i], x1y1x2y2=False, GIoU=True)  # iou(prediction, target)
-                lbox += (1.0 - iou).mean()  # iou loss
-            else:
-                # Regression
+            # pxy和pwh的计算与YOLOLayer所采用的边界框回归计算式有关。而特别需要注意的是YOLOv3中
+            # 所采用的边界框回归计算方式和WongKinYiu-YOLOv4版本中的边界框回归计算方式是不同的！！
+            if 'yolov4' in model.cfg:
                 pxy = ps[:, :2].sigmoid() * 2. - 0.5
                 pwh = (ps[:, 2:4].sigmoid() * 2) ** 2 * anchors[i]
-                pbox = torch.cat((pxy, pwh), 1).to(device)  # predicted box
+            else:
+                pxy = ps[:, :2].sigmoid()
+                pwh = ps[:, 2:4].exp().clamp(max=1E3) * anchors[i]
+            pbox = torch.cat((pxy, pwh), 1).to(device)  # predicted box
+            if 'ciou' in h:
                 iou = bbox_iou(pbox.T, tbox[i], x1y1x2y2=False, CIoU=True)  # iou(prediction, target)
-                lbox += (1.0 - iou).mean()  # iou loss
+            else:
+                iou = bbox_iou(pbox.t(), tbox[i], x1y1x2y2=False, GIoU=True)  # iou(prediction, target)
+            lbox += (1.0 - iou).mean()  # iou loss
+
+            # if 'ciou' in h:
+            #     # GIoU 计算GIoU Loss定位损失
+            #     pxy = ps[:, :2].sigmoid()
+            #     pwh = ps[:, 2:4].exp().clamp(max=1E3) * anchors[i]
+            #     pbox = torch.cat((pxy, pwh), 1)  # predicted box
+            #     iou = bbox_iou(pbox.t(), tbox[i], x1y1x2y2=False, GIoU=True)  # iou(prediction, target)
+            #     lbox += (1.0 - iou).mean()  # iou loss
+            # else:
+            #     pxy = ps[:, :2].sigmoid() * 2. - 0.5
+            #     pwh = (ps[:, 2:4].sigmoid() * 2) ** 2 * anchors[i]
+            #     pbox = torch.cat((pxy, pwh), 1).to(device)  # predicted box
+            #     iou = bbox_iou(pbox.T, tbox[i], x1y1x2y2=False, CIoU=True)  # iou(prediction, target)
+            #     lbox += (1.0 - iou).mean()  # iou loss
 
             # Obj 计算置信度损失
             tobj[b, a, gj, gi] = (1.0 - model.gr) + model.gr * iou.detach().clamp(0).type(tobj.dtype)  # iou ratio

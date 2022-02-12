@@ -133,7 +133,7 @@ class LoadKaistImagesAndLabels(Dataset):
             self.batch_shapes = np.ceil(np.array(shapes) * img_size / 32. + pad).astype(np.int32) * 32
 
         # 6、根据情况从labels.xxx.npy文件中或者遍历从每个原始标签文件中读取到所有的标签数据
-        self.labels = [np.zeros((0, 5), dtype=np.float32)] * n  # 每个图像对应的标签以[x, 5]的shape矩阵记录
+        self.labels = [np.zeros((0, 5), dtype=np.float32)] * n  # 每个图像对应的标签(cls_idx,xywh)以[x, 5]的shape矩阵记录
         miss_num, found_num, empty_num, duplicate_num = 0, 0, 0, 0
         labels_loaded = False
 

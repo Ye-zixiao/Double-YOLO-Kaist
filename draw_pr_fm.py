@@ -21,7 +21,7 @@ def draw_pr_fm(npy_path_list: List, model_name_list: List, save_path=''):
     pr_model_names = model_name_list.copy()
     fm_model_names = model_name_list.copy()
 
-    plt.figure(figsize=(13, 5), dpi=100)
+    plt.figure(figsize=(13, 5), dpi=150)
     plt.subplots_adjust(left=0.05, right=0.98, bottom=0.15, top=0.98, wspace=0.15, hspace=0)
     for i, (npy_path, _) in enumerate(zip(npy_path_list, model_name_list)):
         # 从各个模型对应的npy文件中取出recall、precision、fppi和mr数据
@@ -73,24 +73,37 @@ def draw_pr_fm(npy_path_list: List, model_name_list: List, save_path=''):
 
 
 if __name__ == '__main__':
-    npl = [
+    yolov3_npy_paths = [
         "results/Visible-YOLOv3-Normal102/rec-prec.fppi-mr.npy",
-        "results/Visible-YOLOv3-CSPDarknet102/prec-rec.fppi-mr.npy",
         "results/Double-YOLOv3-Add-SL102/rec-prec.fppi-mr.npy",
         "results/Double-YOLOv3-Concat-SE102/rec-prec.fppi-mr.npy",
         # "results/Double-YOLOv3-Fshare-Global-Add-SL102/rec-prec.fppi-mr.npy",
         # "results/Double-YOLOv3-Fshare-Global-Concat-SE102/rec-prec.fppi-mr.npy",
         "results/Double-YOLOv3-Fshare-Global-Concat-SE3-102/rec-prec.fppi-mr.npy",
-        "results/Double-YOLOv3-CSPDarknet-Fshare-Global-Concat-SE3-102/rec-prec.fppi-mr.npy"
     ]
-    mnl = [
+    yolov3_model_names = [
         "Visible-YOLOv3",
-        "Visible-YOLOv3-CSP",
         "Double-YOLOv3-ASL",
         "Double-YOLOv3-CSE",
         # "Double-YOLOv3-FSHASL",
         # "Double-YOLOv3-FSHCSE",
-        "Double-YOLOv3_FSHCSE3",
-        "Double-YOLOv3-CSP-FSE3"
+        "Double-YOLOv3_FSHCSE3"
     ]
-    draw_pr_fm(npl, mnl, save_path="")
+    draw_pr_fm(yolov3_npy_paths, yolov3_model_names, save_path="")
+
+    yolov4_npy_paths = [
+        "results/Visible-YOLOv4-Normal102/rec-prec.fppi-mr.pny.npy",
+        "results/Double-YOLOv4-Concat-SE102/rec-prec.fppi-mr.npy",
+        "results/Double-YOLOv4-Add-SL102/rec-prec.fppi-mr.npy",
+        "results/Double-YOLOv4-Fshare-Global-Concat-SE3v-102/rec-prec.fppi-mr.npy"
+    ]
+    yolov4_model_names = [
+        "Visible-YOLOv4",
+        "Double-YOLOv4-ASL",
+        "Double-YOLOv4-CSE",
+        "Double-YOLOv4-FSHCSE3"
+    ]
+    draw_pr_fm(yolov4_npy_paths, yolov4_model_names, save_path="")
+
+    draw_pr_fm(yolov3_npy_paths + yolov4_npy_paths, yolov3_model_names + yolov4_model_names,
+               save_path="")

@@ -1,5 +1,6 @@
 from .coco_utils import get_coco_api_from_dataset
 from .coco_eval import CocoEvaluator
+from other_utils.metrics import compute_ap_lamr
 from build_utils.utils import *
 from torch.cuda import amp
 
@@ -25,7 +26,7 @@ def train_one_epoch(model,  # 网络模型对象
     model.train()
     metric_logger = utils.MetricLogger(delimiter="  ")
     metric_logger.add_meter('lr', utils.SmoothedValue(window_size=1, fmt="{value:.6f}"))
-    header = 'Epoch: [{}]'.format(epoch) # 当前为第几轮
+    header = 'Epoch: [{}]'.format(epoch)  # 当前为第几轮
 
     # 2、设置学习率自动调整器
     lr_scheduler = None
@@ -126,10 +127,11 @@ def evaluate(model, dataloader, coco=None, device=None):
     header = "Test: "
 
     # 2、设置cocotools工具
-    if coco is None: # coco还是静态对象？
+    if coco is None:  # coco还是静态对象？
         coco = get_coco_api_from_dataset(dataloader.dataset)
     iou_types = _get_iou_types(model)
     coco_evaluator = CocoEvaluator(coco, iou_types)
+    preds = []
 
     # 3、通过数据加载器将验证集数据送入模型进行测试
     for v_imgs, l_imgs, targets, paths, shapes, img_index in metric_logger.log_every(dataloader, 100, header):
@@ -174,6 +176,15 @@ def evaluate(model, dataloader, coco=None, device=None):
         evaluator_time = time.time() - evaluator_time
         metric_logger.update(model_time=model_time, evaluator_time=evaluator_time)
 
+        # 7、计算compute_ap_lamr()函数所需要的预测边界框字典数据，并将其加入到列表preds中
+        for img_id, output in zip(img_index, outputs):
+            for i in range(output['labels'].shape[0]):
+                info = dict()
+                info['img_id'] = img_id
+                info['conf'] = output['scores'][i].item()
+                info['bbox'] = output['boxes'][i].numpy()
+                preds.append(info)
+
     # gather the stats from all processes
     metric_logger.synchronize_between_processes()
     print("Averaged stats:", metric_logger)
@@ -184,6 +195,12 @@ def evaluate(model, dataloader, coco=None, device=None):
     coco_evaluator.summarize()
 
     result_info = coco_evaluator.coco_eval[iou_types[0]].stats.tolist()  # numpy to list
+
+    # compute_ap_lamr()计算VOC数据集AP性能指标和行人检测模型常用的FPPI-MR性能指标
+    preds.sort(key=lambda x: float(x['conf']), reverse=True)
+    saved_dict = compute_ap_lamr(preds, dataloader.dataset.labels, dataloader.dataset.shapes)
+    print(f"VOC Average Precision (VOC-AP)@[IoU = 0.5] = {(saved_dict['ap'] * 100):.2f}%")
+    print(f"Log Average Miss Rate (LAMR)@[IoU = 0.5] = {(saved_dict['lamr'] * 100):.2f}%")
 
     return result_info
 

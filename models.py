@@ -1,14 +1,15 @@
 from build_utils.utils import get_yolo_layers
-from build_utils import torch_utils
 from build_utils.parse_config import *
 from build_utils.layers import *
+from build_utils import torch_utils
 
 
-def create_modules(modules_defs: list, img_size):
+def create_modules(modules_defs: list, img_size, cfg):
     '''
     根据网络模块定义列表创建网络模型对象，并返回该对象、后续仍要使用的层索引以及网络信息
     :param modules_defs: 记录网络配置信息的字典列表
     :param img_size: 图像大小
+    :param cfg: 模型配置文件路径，主要是用来判断当前模型是YOLOv3还是v4版本
     :return: 模型对象、后续需要使用的层输出索引以及网络元信息字典组成的元组
     '''
 
@@ -37,16 +38,24 @@ def create_modules(modules_defs: list, img_size):
                     kernel_size=k,
                     stride=stride,
                     padding=k // 2 if mdef['pad'] else 0,
+                    groups=mdef['groups'] if 'groups' in mdef else 1,
                     bias=not bn))
             else:
                 raise TypeError("conv2d filter size must be int type")
 
             if bn:
                 modules.add_module("BatchNorm2d", nn.BatchNorm2d(filters))
+            else:
+                routs.append(i)  # 检测层输出 (goes into yolo layer)，不过我觉得没什么用
+
             if mdef['activation'] == 'leaky':
                 modules.add_module("activation", nn.LeakyReLU(0.1, inplace=True))
             elif mdef['activation'] == 'mish':
                 modules.add_module("activation", nn.Mish(inplace=True))
+
+        elif mdef['type'] == 'dropout':
+            p = mdef['probability']
+            modules = nn.Dropout(p)
 
         elif mdef['type'] == 'inception':
             modules = Inception(in_channels=pre_out_filters[-1], n1x1=mdef['n1x1'],
@@ -86,12 +95,15 @@ def create_modules(modules_defs: list, img_size):
 
         elif mdef['type'] == "yolo":
             yolo_index += 1
-            stride = [32, 16, 8]
-
+            # 注意在YOLOv4中网络是先预测小尺度目标，然后是中等尺度目标，最后才是大尺度目标。而在YOLOv3中这个过程是相反的
+            stride = [8, 16, 32, 64, 128]
+            if any(x in cfg for x in ['yolov-tiny', 'fpn', 'yolov3']):
+                stride = [32, 16, 8]
             modules = YOLOLayer(anchors=mdef['anchors'][mdef['mask']],
                                 nc=mdef['classes'],
                                 img_size=img_size,
-                                stride=stride[yolo_index])
+                                stride=stride[yolo_index],
+                                bf_type='yolov4' if 'yolov4' in cfg else 'yolov3')
 
             # Initialize preceding Conv2d() bias (https://arxiv.org/pdf/1708.02002.pdf section 3.3)
             # 根据上述论文初始化预测层的Conv2d网络层中的参数
@@ -125,7 +137,16 @@ class YOLOLayer(nn.Module):
     会得到一个维度为[1, nx * ny * anchor_num, classes_num + 1 + 4]的矩阵
     '''
 
-    def __init__(self, anchors, nc, img_size, stride):
+    def __init__(self, anchors, nc, img_size, stride, bf_type='yolov3'):
+        '''
+        YOLOLayer后处理模块类对象初始化函数
+        :param anchors: 当前YOLOLayer负责生成的anchors数组
+        :param nc: 类别数量
+        :param img_size: 在这里没有用
+        :param stride: 当前YOLOLayer得到的输入预测矩阵中每一个网格大小对于真实图像中的步距
+        :param bf_type: 预测框参数回归计算方式，默认采用yolov3的公式计算，除非指定为yolov4的方式
+        '''
+
         super(YOLOLayer, self).__init__()
         self.anchors = torch.Tensor(anchors)  # anchors预设边界框
         self.stride = stride  # YOLO层输出的特征图对应原图上的步距[32, 16, 8]
@@ -135,6 +156,7 @@ class YOLOLayer(nn.Module):
         self.nx, self.ny, self.ng = 0, 0, (0, 0)  # nx、ny表示预测特征层的宽度和高度，ng表示网格grid cell的大小
         self.anchor_vec = self.anchors / self.stride  # 将anchors缩放到gride cell级别的尺度
         self.anchor_wh = self.anchor_vec.view(1, self.na, 1, 1, 2)  # 将每一个anchor的wh两两成对到同一个维度
+        self.bf_type = bf_type
         self.grid = None
 
     def create_grids(self, ng=(13, 13), device="cpu"):
@@ -144,6 +166,7 @@ class YOLOLayer(nn.Module):
         :param device:
         :return:
         """
+
         self.nx, self.ny = ng  # ng表示网格grid cell的大小
         self.ng = torch.tensor(ng, dtype=torch.float)
 
@@ -183,18 +206,28 @@ class YOLOLayer(nn.Module):
         if self.training:
             return p  # 如果是训练阶段，直接返回上面的p即可，剩下的直接交给后续的损失函数即可
         else:
-            # inference 将推理得到的边界框中心点、宽和高回归，然后映射到原图大小，其实就是按照目标边界框公式计算
-            # [bs, anchor, grid, grid, xywh + obj + classes]
-            io = p.clone()  # inference output
+            if self.bf_type == 'yolov3':
+                # YOLOv3所采用的边界框回归参数计算方式
+                # inference 将推理得到的边界框中心点、宽和高回归，然后映射到原图大小，其实就是按照目标边界框公式计算
+                # [bs, anchor, grid, grid, xywh + obj + classes]
+                io = p.clone()  # inference output
+                # 从下面的代码中我们也可以矩阵p中每一个bbox的参数的放置顺序是：
+                #   0  1  2  3    4      5...N-1
+                #   x  y  w  h  conf  classes_scores
+                # io[...,:2]和self.grid这两个矩阵的大小都是(batch_size, anchor_num, grid_w, grid_h, 2)
+                io[..., :2] = torch.sigmoid(io[..., :2]) + self.grid  # xy 计算在feature map上的xy坐标
+                io[..., 2:4] = torch.exp(io[..., 2:4]) * self.anchor_wh  # wh yolo method 计算在feature map上的wh
+                io[..., :4] *= self.stride  # 换算映射回原图尺度
+                torch.sigmoid_(io[..., 4:])  # 后面的置信度和类别分数通过激活函数处理
+            elif self.bf_type == 'yolov4':
+                # YOLOv4所用的边界框回归参数计算方式
+                io = p.sigmoid()
+                io[..., :2] = (io[..., :2] * 2. - 0.5 + self.grid)
+                io[..., 2:4] = (io[..., 2:4] * 2) ** 2 * self.anchor_wh
+                io[..., :4] *= self.stride
+            else:
+                raise TypeError("bounding box predication error")
 
-            # 从下面的代码中我们也可以矩阵p中每一个bbox的参数的放置顺序是：
-            #   0  1  2  3    4      5...N-1
-            #   x  y  w  h  conf  classes_scores
-            # io[...,:2]和self.grid这两个矩阵的大小都是(batch_size, anchor_num, grid_w, grid_h, 2)
-            io[..., :2] = torch.sigmoid(io[..., :2]) + self.grid  # xy 计算在feature map上的xy坐标
-            io[..., 2:4] = torch.exp(io[..., 2:4]) * self.anchor_wh  # wh yolo method 计算在feature map上的wh
-            io[..., :4] *= self.stride  # 换算映射回原图尺度
-            torch.sigmoid_(io[..., 4:])  # 后面的置信度和类别分数通过激活函数处理
             # 计算得到最终映射回原图尺寸后，我们就不需要矩阵中的grid_w和grid_h两个维度，我们直接将所有的
             # 边界框信息直接返回即可。这里在预测的时候还会将原来YOLO层的输入矩阵p一同返回
             return io.view(bs, -1, self.no), p  # view [1, 3, 13, 13, 85] as [1, 507, 85]
@@ -203,10 +236,11 @@ class YOLOLayer(nn.Module):
 class YOLO(nn.Module):
     def __init__(self, cfg, img_size=(416, 416), verbose=False):
         super(YOLO, self).__init__()
-        self.input_size = [img_size] * 2 if isinstance(img_size, int) else img_size
+
         self.module_defs = parse_model_cfg(cfg)
-        self.module_list, self.routs, self.net_info = create_modules(self.module_defs, img_size)
+        self.module_list, self.routs, self.net_info = create_modules(self.module_defs, img_size, cfg)
         self.yolo_layers = get_yolo_layers(self)
+        self.cfg = cfg
 
         self.info(verbose)
 
@@ -253,3 +287,52 @@ class YOLO(nn.Module):
             # 否则输出的是一个记录含有多个bbox边界框实际中心点宽高+置信度+类别分数的矩阵以及输入p
             x, p = zip(*yolo_out)
             return torch.cat(x, 1), p
+
+
+def load_darknet_weights(model, weights, cutoff=-1):
+    '''
+    试图从后缀为.weights的np二进制权重文件中加载网络权重
+    :param model: 网络模型对象
+    :param weights: 以.weights为后缀的权重文件路径
+    :param cutoff: 试图加载的模型组合开区间的右侧索引，默认为-1表示完整加载权重文件
+    :return:
+    '''
+
+    # 读取权重文件
+    assert weights.endswith('.weights'), "weights file must end with '.weights'"
+    with open(weights, 'rb') as f:
+        # Read Header https://github.com/AlexeyAB/darknet/issues/2914#issuecomment-496675346
+        model.version = np.fromfile(f, dtype=np.int32, count=3)  # (int32) version info: major, minor, revision
+        model.seen = np.fromfile(f, dtype=np.int64, count=1)  # (int64) number of images seen during training
+        weights = np.fromfile(f, dtype=np.float32)  # the rest are weights
+
+    ptr = 0
+    for i, (mdef, module) in enumerate(zip(model.module_defs[:cutoff], model.module_list[:cutoff])):
+        if mdef['type'] == 'convolutional':
+            conv = module[0]
+            if mdef['batch_normalize']:
+                # Load BN bias, weights, running mean and running variance
+                bn = module[1]
+                nb = bn.bias.numel()  # number of biases
+                # Bias
+                bn.bias.data.copy_(torch.from_numpy(weights[ptr:ptr + nb]).view_as(bn.bias))
+                ptr += nb
+                # Weight
+                bn.weight.data.copy_(torch.from_numpy(weights[ptr:ptr + nb]).view_as(bn.weight))
+                ptr += nb
+                # Running Mean
+                bn.running_mean.data.copy_(torch.from_numpy(weights[ptr:ptr + nb]).view_as(bn.running_mean))
+                ptr += nb
+                # Running Var
+                bn.running_var.data.copy_(torch.from_numpy(weights[ptr:ptr + nb]).view_as(bn.running_var))
+                ptr += nb
+            else:
+                # Load conv. bias
+                nb = conv.bias.numel()
+                conv_b = torch.from_numpy(weights[ptr:ptr + nb]).view_as(conv.bias)
+                conv.bias.data.copy_(conv_b)
+                ptr += nb
+            # Load conv. weights
+            nw = conv.weight.numel()  # number of weights
+            conv.weight.data.copy_(torch.from_numpy(weights[ptr:ptr + nw]).view_as(conv.weight))
+            ptr += nw

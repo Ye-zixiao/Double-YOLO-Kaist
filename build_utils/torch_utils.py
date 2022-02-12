@@ -1,10 +1,9 @@
-import math
-import time
 from copy import deepcopy
-
-import torch
 import torch.backends.cudnn as cudnn
 import torch.nn as nn
+import torch
+import math
+import time
 
 
 def init_seeds(seed=0):
@@ -33,6 +32,26 @@ def initialize_weights(model):
             m.inplace = True
 
 
+def select_device(device='cuda:0'):
+    '''仅支持单GPU或CPU的设备选择'''
+
+    cpu_request = device.lower() == 'cpu'
+    if device and not cpu_request:
+        assert torch.cuda.is_available(), 'CUDA unavailable, invalid device '' requested'.format(device)
+
+    device = torch.device(device)
+    cuda = False if cpu_request else torch.cuda.is_available()
+    if cuda:
+        MB = 1024 ** 2
+        di = 0 if device.index is None else device.index
+        dp = torch.cuda.get_device_properties(di)
+        print("Using torch %s CUDA:%d (%s, %dMB)" % (torch.__version__, di, dp.name, dp.total_memory / MB))
+    else:
+        print(f'Using torch {torch.__version__} CPU')
+
+    return device
+
+
 def model_info(model, verbose=False):
     # Plots a line-by-line description of a PyTorch model
     n_p = sum(x.numel() for x in model.parameters())  # number parameters
@@ -52,7 +71,7 @@ def model_info(model, verbose=False):
     except:
         fs = ''
 
-    print('Model Summary: %g layers, %g parameters, %g gradients%s' % (len(list(model.parameters())), n_p, n_g, fs))
+    print(f"Model Summary: {len(list(model.modules()))} layers, {n_p} parameters, {n_g} gradients{fs}")
 
 
 class ModelEMA:

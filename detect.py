@@ -1,6 +1,7 @@
 from build_utils import img_utils, torch_utils, utils
 from build_utils.draw_box_utils import draw_box
 from build_utils.snowflake import clahe_image
+from build_utils.torch_utils import select_device
 from models import YOLO
 from typing import List
 from cv2 import cv2
@@ -82,8 +83,7 @@ def load_model(cfg_path, weight_path, img_size, device):
 
 
 def detect(img_path_list: List):
-    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-    print("Use device '{}' detecting".format(device))
+    device = select_device(opt.device)
 
     # 创建预训练的检测模型，生成索引-类别表
     model = load_model(opt.cfg, opt.weight, opt.img_size, device)
@@ -153,16 +153,15 @@ def detect(img_path_list: List):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
 
-    parser.add_argument('--model-name', type=str, default='Double-YOLOv3-CSPDarknet-Fshare-Global-CSE',
-                        help='detect model name')
+    parser.add_argument('--device', type=str, default='cuda:0', help="detecting device")
+    parser.add_argument('--model-name', type=str, default='Double-YOLOv4-Fshare-Concat-SE3', help='detect model name')
     parser.add_argument('--src', type=str, default='imgs/ori/I00200_lwir.jpg', help='detect image path or name')
-    parser.add_argument('--save', type=str,
-                        default='results/Double-YOLOv3-CSPDarknet-Fshare-Global-CSE3-Snow-102/imgs',
+    parser.add_argument('--save', type=str, default='results/Double-YOLOv4-Fshare-Global-Concat-SE3v-102/imgs',
                         help='result saved dir')
-    parser.add_argument('--cfg', type=str, default='config/kaist_dyolov3_cspdarknet_fshare_global_concat_se3.cfg',
+    parser.add_argument('--cfg', type=str, default='config/kaist_dyolov4_fshare_global_concat_se3.cfg',
                         help='model config file path')
     parser.add_argument('--weight', type=str,
-                        default='results/Double-YOLOv3-CSPDarknet-Fshare-Global-CSE3-Snow-102/kaist_dyolov3_cspdarknet_snowflake_best.pt',
+                        default='results/Double-YOLOv4-Fshare-Global-Concat-SE3v-102/kaist_dyolov4_fshare_cse3_best.pt',
                         help='initial weights path')
     parser.add_argument('--clahe', action='store_true', help="use clahe to process images")
     parser.add_argument('--classes-json', type=str, default='data/kaist_voc_classes.json',

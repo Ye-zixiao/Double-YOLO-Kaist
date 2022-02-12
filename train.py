@@ -2,6 +2,7 @@ from torch.utils.tensorboard import SummaryWriter
 from build_utils.utils import check_file
 from train_utils import kaist_train_eval_utils as train_util
 from train_utils import get_coco_api_from_dataset
+from build_utils.torch_utils import select_device
 from build_utils.kaist_dataset import *
 from models import *
 
@@ -15,58 +16,9 @@ import os
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 
 
-def load_darknet_weights(model, weights, cutoff=-1):
-    '''
-    试图从后缀为.weights的np二进制权重文件中加载网络权重
-    :param model: 网络模型对象
-    :param weights: 以.weights为后缀的权重文件路径
-    :param cutoff: 试图加载的模型组合开区间的右侧索引
-    :return:
-    '''
-
-    # 读取权重文件
-    with open(weights, 'rb') as f:
-        # Read Header https://github.com/AlexeyAB/darknet/issues/2914#issuecomment-496675346
-        model.version = np.fromfile(f, dtype=np.int32, count=3)  # (int32) version info: major, minor, revision
-        model.seen = np.fromfile(f, dtype=np.int64, count=1)  # (int64) number of images seen during training
-        weights = np.fromfile(f, dtype=np.float32)  # the rest are weights
-
-    ptr = 0
-    for i, (mdef, module) in enumerate(zip(model.module_defs[:cutoff], model.module_list[:cutoff])):
-        if mdef['type'] == 'convolutional':
-            conv = module[0]
-            if mdef['batch_normalize']:
-                # Load BN bias, weights, running mean and running variance
-                bn = module[1]
-                nb = bn.bias.numel()  # number of biases
-                # Bias
-                bn.bias.data.copy_(torch.from_numpy(weights[ptr:ptr + nb]).view_as(bn.bias))
-                ptr += nb
-                # Weight
-                bn.weight.data.copy_(torch.from_numpy(weights[ptr:ptr + nb]).view_as(bn.weight))
-                ptr += nb
-                # Running Mean
-                bn.running_mean.data.copy_(torch.from_numpy(weights[ptr:ptr + nb]).view_as(bn.running_mean))
-                ptr += nb
-                # Running Var
-                bn.running_var.data.copy_(torch.from_numpy(weights[ptr:ptr + nb]).view_as(bn.running_var))
-                ptr += nb
-            else:
-                # Load conv. bias
-                nb = conv.bias.numel()
-                conv_b = torch.from_numpy(weights[ptr:ptr + nb]).view_as(conv.bias)
-                conv.bias.data.copy_(conv_b)
-                ptr += nb
-            # Load conv. weights
-            nw = conv.weight.numel()  # number of weights
-            conv.weight.data.copy_(torch.from_numpy(weights[ptr:ptr + nw]).view_as(conv.weight))
-            ptr += nw
-
-
 def train(hyp):
-    # 1、打印训练设备信息
-    device = torch.device(opt.device if torch.cuda.is_available() else "cpu")
-    print("Using {} device training".format(device.type))
+    # 1、选择训练设备信息
+    device = select_device(opt.device)
 
     # 2、设置训练结果文件的相关路径
     weight_best_file = "weights/{}_best.pt".format(opt.name)
@@ -217,7 +169,7 @@ def train(hyp):
 
     # 12、根据剩余训练轮次数继续或者开始网络模型对象的训练
     left_epoches = epochs - start_epoch
-    print("starting traning for {} epochs, left {} epoches...".format(epochs, left_epoches))
+    print("starting training for {} epochs, left {} epoches...".format(epochs, left_epoches))
     print('Using {} dataloader workers'.format(nc))
     for epoch in range(start_epoch, epochs):
         # 训练一个轮次，并从中获取训练过程中计算得到的平均损失值，和当前学习率
@@ -291,20 +243,16 @@ if __name__ == '__main__':
     # 下面几个参数是我们重点需要配置的参数
     parser.add_argument('--epochs', type=int, default=50)
     parser.add_argument('--batch-size', type=int, default=4)
-    parser.add_argument('--hyp', type=str, default='config/hyp.scratch.yaml', help='hyperparameters path')
-    parser.add_argument('--cfg', type=str, default='config/kaist_dyolov3_cspdarknet_fshare_global_concat_se3.cfg',
-                        help="*.cfg path")
-    parser.add_argument('--weights', type=str,
-                        default='weights/pretrained_dyolov3_cspdarknet_fshare_global_concat_se3.pt',
-                        help='initial weights path')
-    parser.add_argument('--name', default='kaist_yolov3_cspdarknet_snowflake',
-                        help='renames results.txt to results_name.txt if supplied')
-    parser.add_argument('--freeze-layers', type=int, default=224,
+    parser.add_argument('--hyp', type=str, default='config/hyp.scratch.4.yaml', help='hyperparameters path')
+    parser.add_argument('--cfg', type=str, default='config/kaist_dyolov4_add_sl.cfg', help="*.cfg path")
+    parser.add_argument('--weights', type=str, default='weights/pretrained_dyolov4.pt', help='initial weights path')
+    parser.add_argument('--name', default='kaist_dyolov4_add_sl', help='renames results.txt to results_name.txt if supplied')
+    parser.add_argument('--freeze-layers', type=int, default=209,
                         help='Freeze feature extract layers, -1 means no layers will be froze')
     parser.add_argument('--device', default='cuda:0', help='device id (i.e. 0 or 0,1 or cpu)')
 
     # 临时启用的程序参数
-    parser.add_argument('--cutoff', type=int, default=117, help="model weights cutoff")
+    parser.add_argument('--cutoff', type=int, default=104, help="model weights cutoff")
     parser.add_argument('--obj-gain', type=int, default=1, help="object loss gain")
     parser.add_argument('--snow', action='store_true', help='use snowflake change to process images')
 
@@ -312,8 +260,7 @@ if __name__ == '__main__':
     parser.add_argument('--sgd', action='store_true', help='use torch.optim.SGD() optimizer')
     parser.add_argument('--single-cls', type=bool, default=True, help='train as single-class dataset')
     parser.add_argument('--data', type=str, default='data/kaist_data.data', help='*.data path')
-    parser.add_argument('--multi-scale', type=bool, default=True,
-                        help='adjust (67%% - 150%%) img_size every 10 batches')
+    parser.add_argument('--multi-scale', type=bool, default=True, help='adjust (67%% - 150%%) img_size every 10 batches')
     parser.add_argument('--img-size', type=int, default=512, help='test size')
     parser.add_argument('--rect', action='store_true', help='rectangular training')  # 不要开启矩形变换，因为矩形变换的代码有错误
     parser.add_argument('--save-best', type=bool, default=True, help='only save best checkpoint')

@@ -63,8 +63,4 @@ def draw_map_loss_ls(filenames, model_names):
 
 
 if __name__ == '__main__':
-    draw_map_loss_ls([
-        'results/Visible-YOLOv3-Normal102/results20220128-214418.txt'
-    ], [
-        'Double-YOLOv3-Darknet_Fshare'
-    ])
+    draw_map_loss("results/Double-YOLOv4-Fshare-Global-Concat-SE3v-102/results20220211-143545.txt")
