@@ -1,8 +1,6 @@
-from models import YOLO
 import matplotlib.pyplot as plt
 from numpy import double
 import numpy as np
-import torch
 import os
 
 os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
@@ -60,7 +58,3 @@ def draw_map_loss_ls(filenames, model_names):
         plt.plot(x_axis, lr)
         plt.grid(ls='--')
     plt.show()
-
-
-if __name__ == '__main__':
-    draw_map_loss("results/Double-YOLOv4-Fshare-Global-Concat-SE3v-102/results20220211-143545.txt")

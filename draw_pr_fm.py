@@ -79,7 +79,7 @@ if __name__ == '__main__':
         "results/Double-YOLOv3-Concat-SE102/rec-prec.fppi-mr.npy",
         # "results/Double-YOLOv3-Fshare-Global-Add-SL102/rec-prec.fppi-mr.npy",
         # "results/Double-YOLOv3-Fshare-Global-Concat-SE102/rec-prec.fppi-mr.npy",
-        "results/Double-YOLOv3-Fshare-Global-Concat-SE3-102/rec-prec.fppi-mr.npy",
+        # "results/Double-YOLOv3-Fshare-Global-Concat-SE3-102/rec-prec.fppi-mr.npy",
     ]
     yolov3_model_names = [
         "Visible-YOLOv3",
@@ -87,7 +87,7 @@ if __name__ == '__main__':
         "Double-YOLOv3-CSE",
         # "Double-YOLOv3-FSHASL",
         # "Double-YOLOv3-FSHCSE",
-        "Double-YOLOv3_FSHCSE3"
+        # "Double-YOLOv3_FSHCSE3"
     ]
     draw_pr_fm(yolov3_npy_paths, yolov3_model_names, save_path="")
 
@@ -95,13 +95,13 @@ if __name__ == '__main__':
         "results/Visible-YOLOv4-Normal102/rec-prec.fppi-mr.pny.npy",
         "results/Double-YOLOv4-Concat-SE102/rec-prec.fppi-mr.npy",
         "results/Double-YOLOv4-Add-SL102/rec-prec.fppi-mr.npy",
-        "results/Double-YOLOv4-Fshare-Global-Concat-SE3v-102/rec-prec.fppi-mr.npy"
+        # "results/Double-YOLOv4-Fshare-Global-Concat-SE3v-102/rec-prec.fppi-mr.npy"
     ]
     yolov4_model_names = [
         "Visible-YOLOv4",
         "Double-YOLOv4-ASL",
         "Double-YOLOv4-CSE",
-        "Double-YOLOv4-FSHCSE3"
+        # "Double-YOLOv4-FSHCSE3"
     ]
     draw_pr_fm(yolov4_npy_paths, yolov4_model_names, save_path="")
 

@@ -1,6 +1,18 @@
 # 一种基于YOLOv3/4的混合模态行人检测算法
 
-## 一、KAIST数据集说明
+## 一、项目特性
+
+![论文工作.drawio](docs/论文工作.drawio.png)
+
+- 在YOLOv4 Mosaic数据增广方法的基础上引入雪花变换、CLAHE以及伪目标嵌入等方法，提高网络泛化能力。
+- 使用双流并行的CSPDarknet53网络从可见光和红外光图像中提取出各自的特征图。
+- 设计了基于特征共享网络FSNet的混合模态特征融合方法，通过相互指导的方式实现红外光图像特征与可见光图像特征图的有效融合。
+- 借鉴CSPNet的思路，在原先YOLOv4的SPP结构基础上改造成SPP-CSPNet来优化网路结构。
+- 使用基于最大最小边界比MMBR适应度函数的遗传算法来优化锚定框的设置。
+
+
+
+## 二、KAIST数据集说明
 
 Train：
 
@@ -42,26 +54,32 @@ Test：
 - [x] Set 11 / Night / Downtown / 1.33GB / 3,560 frames / 6,655 objects [jpg]
   **1.8694** objects/frame **785**
 
-实验时所采用如上标号的数据集进行训练，并进行随机采样，默认取60%的数据作为训练数据集，取30%的数据作为验证集，取最后剩下的10%作为测试集，所有的图片都分为可见光和红外光图像两个版本。除此之外，在剩下的（主要是夜间场景下）数据集中我们还会抽取出部分的图像作为演示之用。
+本文采用的是KAIST数据集，该数据集是于2015年由Hwang等人所构建的多光谱检测数据集，主要目的就是解决夜间环境下行人检测数据缺乏的问题。数据集本身分为12个子集，其中set00~set05为训练数据（set00~set02为白天场景，set03~set05为夜间场景），set06~set11为测试数据（set06~set08为白天场景，set09~set11为夜间场景），图像分辨率大小640x512，总共包含95328张图片，每张图片都包含RGB彩色图像和红外光图像两个版本。数据集分别在白天和夜间捕获了包括校园、街道以及乡下等多个常规交通场景，并含有103108个密集标注，其中较好区分的行人个体被标注为person，不太好分辨的多个个体则被标注为people，骑行的人则被标注为cyclist。
+
+但考虑到标注的people包含多个行人目标，对于网络模型的学习可能会产生不良的影响；且骑行者cyclist本身也是分辨良好的人体，因此在实际的数据清洗中会忽略people标注，并将cyclist替换成person。除此之外，数据集中的图片由于都是从视频上截取下来，编号相近的图片所记录的画面几乎含有相同的信息，因此在数据清洗的时候会以一定步距抽样方式对有效使用的数据进行筛选，防止模型重复学习。
+
+实际实验时，采用上面指定的部分数据集作为训练数据集和验证集，两者随机按照3：1分配，最后剩下的数据集作为测试集（由白天数据集和夜间数据集组成）。所有的下面实验得到的性能数据都是在测试数据集上得到的。
+
+数据集下载地址：链接：https://pan.baidu.com/s/1h1e3rZQqIR9MIdiF0W7nXQ  提取码：67iz
 
 
 
-## 二、实验结果对比分析
+## 三、实验结果对比分析
 
-实验设备采用CPU：`Intel(R) Xeon(R) Silver 4210R CPU @ 2.40GHz`，内存：`192G DDR4-3200MHz`，GPU：`Quadro RTX 6000@24220MiB × 2`。实验参数设置：超参数：`hyp['box']: 3.540, hyp['obj']: 102.880. hyp['cls']: 0.468`。
+实验设备采用CPU：`Intel(R) Xeon(R) Silver 4210R CPU @ 2.40GHz`，内存：`192G DDR4-3200MHz`，GPU：`Quadro RTX 6000@24220MiB × 2`。实验参数设置：超参数：`hyp['box']: 3.540, hyp['obj']: 102.880. hyp['cls']: 0.468`；初始学习率为0.001，采用余弦退火策略按轮次减少学习率到0.0001，总训练轮数50，batch size为16。
 
 基于YOLOv3改进算法的实验以及对照实验的结果如下表所示：
 
-|             算法模型名             | 全天候测试集AP@IoU=0.5 | 全天候测试集LAMR@IoU=0.5 | 白天测试集AP@IoU=0.5 | 白天测试集LAMR@IoU=0.5 | 夜间测试集AP@IoU=0.5 | 夜间测试集LAMR@IoU=0.5 | 检测速度FPS |
-| :--------------------------------: | :--------------------: | :----------------------: | :------------------: | :--------------------: | :------------------: | :--------------------: | :---------: |
-|       Visible-YOLOv3-Normal        |         82.42%         |          33.40%          |        87.72%        |         26.84%         |        76.15%        |         40.05%         |  **72.14**  |
-|        Double-YOLOv3-Add-SL        |       **89.69%**       |          24.11%          |        90.34%        |         22.31%         |        88.94%        |         26.24%         |    43.94    |
-|         Double-YOLOv3-CSE          |         89.05%         |          24.34%          |        90.02%        |         22.24%         |        87.88%        |         26.91%         |    42.19    |
-| Double-YOLOv3-Concat-Inception-SE  |         89.13%         |          24.86%          |        89.63%        |         23.59%         |        88.56%        |         26.12%         |    34.56    |
-|      Double-YOLOv3-Fshare-CSE      |         89.17%         |          23.84%          |      **90.46%**      |       **21.43%**       |        87.66%        |         26.57%         |    33.69    |
-|  Double-YOLOv3-Global-Fshare-CSE   |         89.47%         |          24.51%          |        90.10%        |         22.44%         |        88.80%        |         27.15%         |    38.70    |
-|  Double-YOLOv3-Global-Fshare-CSE3  |         89.58%         |        **22.65%**        |        89.93%        |         21.60%         |      **89.15%**      |       **24.12%**       |    42.57    |
-| Double-YOLOv3-Global-Fshare-Add-SL |         89.14%         |          23.70%          |        89.44%        |         22.56%         |        88.88%        |         24.83%         |    41.07    |
+|              算法模型名              | 全天候测试集AP@IoU=0.5 | 全天候测试集LAMR@IoU=0.5 | 白天测试集AP@IoU=0.5 | 白天测试集LAMR@IoU=0.5 | 夜间测试集AP@IoU=0.5 | 夜间测试集LAMR@IoU=0.5 | 检测速度FPS |
+| :----------------------------------: | :--------------------: | :----------------------: | :------------------: | :--------------------: | :------------------: | :--------------------: | :---------: |
+|        Visible-YOLOv3-Normal         |         82.42%         |          33.40%          |        87.72%        |         26.84%         |        76.15%        |         40.05%         |  **72.14**  |
+|         Double-YOLOv3-Add-SL         |       **89.69%**       |          24.11%          |        90.34%        |         22.31%         |        88.94%        |         26.24%         |    43.94    |
+|          Double-YOLOv3-CSE           |         89.05%         |          24.34%          |        90.02%        |         22.24%         |        87.88%        |         26.91%         |    42.19    |
+|  Double-YOLOv3-Concat-Inception-SE   |         89.13%         |          24.86%          |        89.63%        |         23.59%         |        88.56%        |         26.12%         |    34.56    |
+|       Double-YOLOv3-Fshare-CSE       |         89.17%         |          23.84%          |      **90.46%**      |       **21.43%**       |        87.66%        |         26.57%         |    33.69    |
+|   Double-YOLOv3-Global-Fshare-CSE    |         89.47%         |          24.51%          |        90.10%        |         22.44%         |        88.80%        |         27.15%         |    38.70    |
+| **Double-YOLOv3-Global-Fshare-CSE3** |         89.58%         |        **22.65%**        |        89.93%        |         21.60%         |      **89.15%**      |       **24.12%**       |    42.57    |
+|  Double-YOLOv3-Global-Fshare-Add-SL  |         89.14%         |          23.70%          |        89.44%        |         22.56%         |        88.88%        |         24.83%         |    41.07    |
 
 上述实验中较好算法模型得到的P-R曲线和FPPI-MR曲线如下图所示：
 
@@ -69,12 +87,12 @@ Test：
 
 基于YOLOv4改进算法的实验以及对照实验的结果如下表所示：
 
-|            算法模型名            | 全天候测试集AP@IoU=0.5 | 全天候测试集LAMR@IoU=0.5 | 白天测试集AP@IoU=0.5 | 白天测试集LAMR@IoU=0.5 | 夜间测试集AP@IoU=0.5 | 夜间测试集LAMR@IoU=0.5 | 检测速度FPS |
-| :------------------------------: | :--------------------: | :----------------------: | :------------------: | :--------------------: | :------------------: | :--------------------: | :---------: |
-|      Visible-YOLOv4-Normal       |         84.72%         |          30.05%          |        89.07%        |         24.58%         |        79.57%        |         35.42%         |  **51.62**  |
-|       Double-YOLOv4-Add-SL       |         89.09%         |          23.54%          |        88.96%        |         22.58%         |        89.28%        |         24.23%         |    30.30    |
-|        Double-YOLOv4-CSE         |         89.79%         |          23.13%          |        90.05%        |         21.94%         |        89.50%        |         24.55%         |    29.91    |
-| Double-YOLOv4-Fshare-Global-CSE3 |       **90.22%**       |        **20.31%**        |      **90.89%**      |       **18.71%**       |      **89.47%**      |       **22.25%**       |    29.04    |
+|              算法模型名              | 全天候测试集AP@IoU=0.5 | 全天候测试集LAMR@IoU=0.5 | 白天测试集AP@IoU=0.5 | 白天测试集LAMR@IoU=0.5 | 夜间测试集AP@IoU=0.5 | 夜间测试集LAMR@IoU=0.5 | 检测速度FPS |
+| :----------------------------------: | :--------------------: | :----------------------: | :------------------: | :--------------------: | :------------------: | :--------------------: | :---------: |
+|        Visible-YOLOv4-Normal         |         84.72%         |          30.05%          |        89.07%        |         24.58%         |        79.57%        |         35.42%         |  **51.62**  |
+|         Double-YOLOv4-Add-SL         |         89.09%         |          23.54%          |        88.96%        |         22.58%         |        89.28%        |         24.23%         |    30.30    |
+|          Double-YOLOv4-CSE           |         89.79%         |          23.13%          |        90.05%        |         21.94%         |        89.50%        |         24.55%         |    29.91    |
+| **Double-YOLOv4-Fshare-Global-CSE3** |       **90.22%**       |        **20.31%**        |      **90.89%**      |       **18.71%**       |      **89.47%**      |       **22.25%**       |    29.04    |
 
 ![yolov4.pr-fm-4](docs/yolov4.pr-fm-4.png)
 
@@ -82,10 +100,23 @@ Test：
 
 ![yolov3-4.pr-fm-8](docs/yolov3-4.pr-fm-8.png)
 
+上述实验得到的网络权重下载地址：
+
+1. Visible-YOLOv3：https://pan.baidu.com/s/1e_n-V-mP-yxG2GYs9xJ0_Q  提取码：wasp
+2. Double-YOLOv3-ASL：https://pan.baidu.com/s/1k445GqCrwjrdCLhSoeJOlg  提取码：d13n
+3. Double-YOLOv3-CSE：https://pan.baidu.com/s/13pnX5GS9ik9uDJ3jPzonyg  提取码：0eij
+4. Double-YOLOv3-FSCSE3：https://pan.baidu.com/s/1V5Hu8NyCd0KwypP8y8fvNA 提取码：1d7e
+5. Visible-YOLOv4：https://pan.baidu.com/s/1E36snCK2_xZI-EeOOhCeLQ  提取码：dnwm
+6. Double-YOLOv4-ASL：https://pan.baidu.com/s/1lb4VvGQWPA07SyXSquDQrQ  提取码：4yp8 
+7. Double-YOLOv4-CSE：https://pan.baidu.com/s/1nq3JJVzA-zo2LsCS_HauvQ  提取码：pl9s
+8. Double-YOLOv4-FSCSE3：https://pan.baidu.com/s/1jYt3pxuAJ8WrmiWzRMKkVA  提取码：7z2y
 
 
-## 三、参考资料
 
+## 四、参考资料
+
+- [WongKinYiu版YOLOv4 Pytorch实现](https://github.com/WongKinYiu/PyTorch_YOLOv4)
+- [U版YOLOv3 Pytorch实现](https://github.com/ultralytics/yolov3)
 - [【行人检测】miss rate versus false positives per image (FPPI) 前世今生（理论篇）](https://blog.csdn.net/weixin_38705903/article/details/109654157)
 - [【行人检测】miss rate versus false positives per image (FPPI) 前世今生（实战篇-上）](https://blog.csdn.net/weixin_38705903/article/details/109684244)
 - [【行人检测】miss rate versus false positives per image (FPPI) 前世今生（实战篇-下）](https://blog.csdn.net/weixin_38705903/article/details/109696278)
@@ -95,5 +126,4 @@ Test：
 - [目标检测mAP计算以及coco评价标准](https://www.bilibili.com/video/BV1ez4y1X7g2?from=search&seid=1352019570332389778&spm_id_from=333.337.0.0)
 - [COCO数据集介绍以及pycocotools简单使用](https://www.bilibili.com/video/BV1TK4y1o78H/?spm_id_from=333.788.recommend_more_video.0)
 - [深度学习小技巧-mAP精度概念详解与计算绘制](https://www.bilibili.com/video/BV1zE411u7Vw?p=2)
-
 

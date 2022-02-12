@@ -41,7 +41,7 @@ def evaluate(opt, hyp):
     test_path = data_dict[opt.test_type]
 
     val_dataset = LoadKaistImagesAndLabels(test_path, img_size, batch_size,
-                                           hyp=hyp, rect=True, snowflake=False, clahe=opt.clahe)
+                                           hyp=hyp, rect=True, snowflake=False)
     val_dataset_loader = DataLoader(val_dataset, batch_size=batch_size,
                                     shuffle=False, num_workers=nw, pin_memory=True,
                                     collate_fn=val_dataset.collate_fn)
@@ -132,13 +132,12 @@ if __name__ == '__main__':
     parser.add_argument('--hyp', type=str, default='config/hyp.scratch.4.yaml', help='hyperparameters path')
     parser.add_argument('--img-size', type=int, default=512, help='test size')
     parser.add_argument('--batch-size', default=8, type=int, metavar='N', help='batch size when validation.')
-    parser.add_argument('--cfg', type=str, default='config/kaist_dyolov4_add_sl.cfg', help="*.cfg path")
+    parser.add_argument('--cfg', type=str, default='config/kaist_dyolov4_fshare_global_concat_se3.cfg', help="*.cfg path")
     parser.add_argument('--weights', type=str,
-                        default='results/Double-YOLOv4-Concat-SE102/kaist_dyolov4_add_sl_best.pt',
+                        default='kaist_dyolov4_fshare_cse3_best.pt',
                         help='detecting weights')
     parser.add_argument('--npy-path', type=str, help="save recall, precision, fppi, mr into this npy file",
                         default='')
-    parser.add_argument('--clahe', action='store_true', help="use clahe to process images")
     opt = parser.parse_args()
 
     with open(opt.hyp, encoding='utf-8') as f:

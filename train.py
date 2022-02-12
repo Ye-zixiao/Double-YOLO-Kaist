@@ -1,3 +1,4 @@
+from other_utils.anchor_cluster import change_cfg_file_anchors
 from torch.utils.tensorboard import SummaryWriter
 from build_utils.utils import check_file
 from train_utils import kaist_train_eval_utils as train_util
@@ -38,6 +39,9 @@ def train(hyp):
     imgsz_train = opt.img_size  # 训练时输入图像大小
     imgsz_test = opt.img_size  # test image sizes
     multi_scale = opt.multi_scale
+    if opt.anchor_cluster:
+        # 自动对训练集边界框进行聚类并回写到模型配置文件中
+        change_cfg_file_anchors(cfg)
 
     # 4、设置多尺度训练相关的参数
     # 图像要设置成32的倍数，我们默认的输出图像大小512是32的倍数
@@ -64,7 +68,7 @@ def train(hyp):
 
     # 下面几个损失函数权重系数的调参挺有用的
     hyp["cls"] *= nc / 80  # update coco-tuned hyp['cls'] to current dataset
-    hyp["obj"] *= imgsz_test / 320 * opt.obj_gain  # TODO: 置信度损失权重可能越大越好？
+    hyp["obj"] *= imgsz_test / 320
     print(f"hyp['box']: {hyp['box']:0.3f}, hyp['obj']: {hyp['obj']:0.3f}. hyp['cls']: {hyp['cls']:0.3f},"
           f" {('CIoU Loss' if 'ciou' in hyp else 'GIoU Loss')}")
 
@@ -244,23 +248,24 @@ if __name__ == '__main__':
     parser.add_argument('--epochs', type=int, default=50)
     parser.add_argument('--batch-size', type=int, default=4)
     parser.add_argument('--hyp', type=str, default='config/hyp.scratch.4.yaml', help='hyperparameters path')
-    parser.add_argument('--cfg', type=str, default='config/kaist_dyolov4_add_sl.cfg', help="*.cfg path")
-    parser.add_argument('--weights', type=str, default='weights/pretrained_dyolov4.pt', help='initial weights path')
-    parser.add_argument('--name', default='kaist_dyolov4_add_sl', help='renames results.txt to results_name.txt if supplied')
-    parser.add_argument('--freeze-layers', type=int, default=209,
+    parser.add_argument('--cfg', type=str, default='config/kaist_yolov3.cfg', help="*.cfg path")
+    parser.add_argument('--weights', type=str, default='weights/pretrained_yolov3.pt', help='initial weights path')
+    parser.add_argument('--name', default='kaist_yolov3', help='renames results.txt to results_name.txt if supplied')
+    parser.add_argument('--freeze-layers', type=int, default=74,
                         help='Freeze feature extract layers, -1 means no layers will be froze')
     parser.add_argument('--device', default='cuda:0', help='device id (i.e. 0 or 0,1 or cpu)')
 
     # 临时启用的程序参数
     parser.add_argument('--cutoff', type=int, default=104, help="model weights cutoff")
-    parser.add_argument('--obj-gain', type=int, default=1, help="object loss gain")
     parser.add_argument('--snow', action='store_true', help='use snowflake change to process images')
 
     # 下面几个参数几乎不需要改动
+    parser.add_argument('--anchor-cluster', action='store_true', help="use cluster algorithm to set anchors")
     parser.add_argument('--sgd', action='store_true', help='use torch.optim.SGD() optimizer')
     parser.add_argument('--single-cls', type=bool, default=True, help='train as single-class dataset')
     parser.add_argument('--data', type=str, default='data/kaist_data.data', help='*.data path')
-    parser.add_argument('--multi-scale', type=bool, default=True, help='adjust (67%% - 150%%) img_size every 10 batches')
+    parser.add_argument('--multi-scale', type=bool, default=True,
+                        help='adjust (67%% - 150%%) img_size every 10 batches')
     parser.add_argument('--img-size', type=int, default=512, help='test size')
     parser.add_argument('--rect', action='store_true', help='rectangular training')  # 不要开启矩形变换，因为矩形变换的代码有错误
     parser.add_argument('--save-best', type=bool, default=True, help='only save best checkpoint')

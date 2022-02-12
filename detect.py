@@ -1,6 +1,5 @@
 from build_utils import img_utils, torch_utils, utils
 from build_utils.draw_box_utils import draw_box
-from build_utils.snowflake import clahe_image
 from build_utils.torch_utils import select_device
 from models import YOLO
 from typing import List
@@ -24,7 +23,7 @@ plt.rcParams['axes.unicode_minus'] = False  # 用来正常显示负号
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 
 
-def load_images(v_img_path, l_img_path, input_size, device, clahe=False):
+def load_images(v_img_path, l_img_path, input_size, device):
     assert os.path.exists(v_img_path), "visible image '{}' not exist.".format(v_img_path)
     assert os.path.exists(l_img_path), "infrared image '{}' not exist.".format(l_img_path)
 
@@ -33,9 +32,6 @@ def load_images(v_img_path, l_img_path, input_size, device, clahe=False):
     l_img_o = cv2.imread(l_img_path)
     v_img = img_utils.letterbox(v_img_o, new_shape=input_size, auto=True, color=(0, 0, 0))[0]
     l_img = img_utils.letterbox(l_img_o, new_shape=input_size, auto=True, color=(0, 0, 0))[0]
-
-    if clahe:
-        v_img, l_img = clahe_image(v_img, l_img)
 
     # 将两张图像从BGR-HWC转换成RGB-CHW的组织形式
     v_img = v_img[:, :, ::-1].transpose(2, 0, 1)
@@ -163,7 +159,6 @@ if __name__ == '__main__':
     parser.add_argument('--weight', type=str,
                         default='results/Double-YOLOv4-Fshare-Global-Concat-SE3v-102/kaist_dyolov4_fshare_cse3_best.pt',
                         help='initial weights path')
-    parser.add_argument('--clahe', action='store_true', help="use clahe to process images")
     parser.add_argument('--classes-json', type=str, default='data/kaist_voc_classes.json',
                         help='classes json file path')
     parser.add_argument('--img-size', type=int, default=512, help='detect image size')

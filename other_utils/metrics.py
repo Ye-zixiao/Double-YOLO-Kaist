@@ -73,7 +73,7 @@ def box_iou(box1: np.ndarray, box2: np.ndarray):
     # TODO：clip用来避免重叠区域面积出现小于0的现象，但必须设置上限，我不知道numpy中还有没有别的方法
     inter = np.prod(np.clip(np.minimum(box1[:, None, 2:], box2[:, 2:])
                             - np.maximum(box1[:, None, :2], box2[:, :2]) + 1,
-                            0, 100000), axis=2)
+                            0, 1E5), axis=2)
     return inter / (area1[:, None] + area2 - inter)
 
 

@@ -1,10 +1,31 @@
-from scipy.cluster.vq import kmeans
-from tqdm import tqdm
+from PIL import Image, ExifTags
 from lxml import etree
+from tqdm import tqdm
 
 import numpy as np
 import random
 import os
+
+# 找到图像exif信息中对应旋转信息的key
+for orientation in ExifTags.TAGS.keys():
+    if ExifTags.TAGS[orientation] == "Orientation":
+        break
+
+
+def exif_size(img):
+    '''
+    获取由Image.open()方法打开的图像的大小
+    :param img: PIL图像
+    :return: 图像宽高
+    '''
+    s = img.size
+    try:
+        rotation = dict(img._getexif().items())[orientation]
+        if rotation in [6, 8]:
+            s = s(s[1], s[0])
+    except:
+        pass
+    return s
 
 
 class VOCDatasetLabels(object):
@@ -83,6 +104,52 @@ class VOCDatasetLabels(object):
         return im_wh_list, boxes_wh_list
 
 
+class YOLODatasetLabels(object):
+    def __init__(self, train_data_txt="data/kaist_train_data.txt"):
+        try:
+            with open(train_data_txt, "r") as f:
+                img_files = f.read().splitlines()
+                self.img_files = [imf.replace(".jpg", "_visible.jpg") for imf in img_files]
+                self.label_files = [imf.replace("images", "labels").replace("jpg", "txt") for imf in img_files]
+                n = len(img_files)
+        except Exception as e:
+            raise FileNotFoundError("Error loading data from '{}': {}".format(train_data_txt, e))
+
+        train_data_shape_path = train_data_txt.replace(".txt", ".shapes")
+        try:
+            # 尝试从指定的.shape文件中加载每张图的尺寸信息
+            with open(train_data_shape_path, "r") as f:
+                sp = [x.split() for x in f.read().splitlines()]
+        except Exception as e:
+            # 否则就挨个读取图像文件获取它们的尺寸信息
+            visible_img_files = tqdm(self.img_files, desc="reading image shapes")
+            sp = [exif_size(Image.open(f)) for f in visible_img_files]
+            np.savetxt(train_data_shape_path, sp, fmt="%g")
+        # shapes记录每一张图片的宽高wh
+        self.img_shapes = np.array(sp, dtype=np.float64)
+
+        # 遍历所有的标签文件，将其加载到对象内存中
+        self.labels = [np.zeros((0, 5), dtype=np.float32)] * n
+        found_num, miss_num = 0, 0
+        pbar = tqdm(self.label_files)
+        for i, fl in enumerate(pbar):
+            try:
+                with open(fl, "r") as f:
+                    l = np.array([x.split() for x in f.read().splitlines()], dtype=np.float32)
+            except Exception as e:
+                print("An error occurred while loading the file {}: {}".format(fl, e))
+                continue
+
+            self.labels[i] = l
+            pbar.desc = "Caching labels ({} found, {} missing, for {} images)".format(found_num, miss_num, n)
+
+    def __len__(self):
+        return len(self.labels)
+
+    def get_info(self):
+        return self.img_shapes, [boxes[:, 3:] for boxes in self.labels]
+
+
 def wh_iou(wh1, wh2):
     '''
     计算所有边界框和聚簇中心的9个典型边界框之间的IoU数值
@@ -135,7 +202,7 @@ def anchor_fitness(whs: np.ndarray, anchors: np.ndarray, thr: float):
     :param whs: 所有训练集上标注边界框的高宽信息
     :param anchors: 当前代产生9个锚定框组合
     :param thr: mmbr阈值
-    :return:
+    :return: 将最终的边界框聚类结果返回
     '''
 
     ratio = whs[:, None] / anchors[None]  # 计算标注边界框与锚定框组合之间的边界比
@@ -149,9 +216,10 @@ def anchor_fitness(whs: np.ndarray, anchors: np.ndarray, thr: float):
     return fitness_val, best_recall
 
 
-def main(img_size=512, n=9, thr=0.25, gen=1000):
+def anchor_cluster(img_size=512, n=9, thr=0.25, gen=1000):
     # 从数据集中读取所有图片的wh以及对应bboxes的wh
-    dataset_labels = VOCDatasetLabels(root_path="Kaist_VOC", txt_name='train.txt')
+    # dataset_labels = VOCDatasetLabels(root_path="Kaist_VOC", txt_name='train.txt')
+    dataset_labels = YOLODatasetLabels(train_data_txt="data/kaist_train_data.txt")
     im_wh, boxes_wh = dataset_labels.get_info()
 
     # 最大边缩放到img_size
@@ -179,7 +247,7 @@ def main(img_size=512, n=9, thr=0.25, gen=1000):
     # f表示当前的先验框anchors的适应度，sh表示anchor的shape（9，2），
     # mpi表示变异概率（默认设置为90%），s表示变异系数sigma，控制每个基因的变化程度
     f, sh, mp, s = anchor_fitness(k, wh, thr)[0], k.shape, 0.9, 0.1
-    pbar = tqdm(range(gen), desc=f'Evolving anchors with Genetic Algorithm:')
+    pbar = tqdm(range(gen), desc='Evolving anchors with Genetic Algorithm:')
     for _ in pbar:
         v = np.ones(sh)
         while (v == 1).all():  # 只要有一个变异因子不为1，则跳出循环，确保至少有一个锚定框发生变异
@@ -199,6 +267,25 @@ def main(img_size=512, n=9, thr=0.25, gen=1000):
     print("genetic: " + " ".join([f"[{int(i[0])}, {int(i[1])}]" for i in k]))
     print(f"fitness: {f:.5f}, best recall: {br:.5f}")
 
+    return k
+
+
+def change_cfg_file_anchors(cfg_path):
+    # 对训练数据集中的标注边界框宽高进行聚类
+    k = anchor_cluster(img_size=512, n=9, thr=0.25, gen=1000)
+    # 读取原先的模型配置文件
+    with open(cfg_path, "r") as f:
+        cfg_lines = f.read().splitlines()
+
+    # 找到对应配置文件中的anchors行进行修改
+    for i, cl in enumerate(cfg_lines):
+        if cl.startswith("anchors"):
+            cfg_lines[i] = "anchors = " + ", ".join([f"{int(i[0])}, {int(i[1])}" for i in k])
+
+    # 将修改后的模型配置文件回写
+    with open(cfg_path, "w") as f:
+        f.write('\n'.join(cfg_lines))
+
 
 if __name__ == "__main__":
-    main()
+    anchor_cluster()  # 一定要放到项目根目录运行
