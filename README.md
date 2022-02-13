@@ -12,7 +12,13 @@
 
 
 
-## 二、KAIST数据集说明
+## 二、数据集说明
+
+本文采用的是KAIST数据集，该数据集是于2015年由Hwang等人所构建的多光谱检测数据集，主要目的就是解决夜间环境下行人检测数据缺乏的问题。数据集本身分为12个子集，其中set00~set05为训练数据（set00~set02为白天场景，set03~set05为夜间场景），set06~set11为测试数据（set06~set08为白天场景，set09~set11为夜间场景），图像分辨率大小640x512，总共包含95328张图片，每张图片都包含RGB彩色图像和红外光图像两个版本。数据集分别在白天和夜间捕获了包括校园、街道以及乡下等多个常规交通场景，并含有103108个密集标注，其中较好区分的行人个体被标注为person，不太好分辨的多个个体则被标注为people，骑行的人则被标注为cyclist。
+
+但考虑到标注的people包含多个行人目标，对于网络模型的学习可能会产生不良的影响；且骑行者cyclist本身也是分辨良好的人体，因此在实际的数据清洗中会忽略people标注，并将cyclist替换成person。除此之外，数据集中的图片由于都是从视频上截取下来，编号相近的图片所记录的画面几乎含有相同的信息，因此在数据清洗的时候会以一定步距抽样方式对有效使用的数据进行筛选，防止模型重复学习。
+
+实际实验时，采用上面指定的部分数据集作为训练数据集和验证集，两者随机按照3：1分配，最后剩下的数据集作为测试集（由白天数据集和夜间数据集组成）。所有的下面实验得到的性能数据都是在测试数据集上得到的。
 
 Train：
 
@@ -54,17 +60,39 @@ Test：
 - [x] Set 11 / Night / Downtown / 1.33GB / 3,560 frames / 6,655 objects [jpg]
   **1.8694** objects/frame **785**
 
-本文采用的是KAIST数据集，该数据集是于2015年由Hwang等人所构建的多光谱检测数据集，主要目的就是解决夜间环境下行人检测数据缺乏的问题。数据集本身分为12个子集，其中set00~set05为训练数据（set00~set02为白天场景，set03~set05为夜间场景），set06~set11为测试数据（set06~set08为白天场景，set09~set11为夜间场景），图像分辨率大小640x512，总共包含95328张图片，每张图片都包含RGB彩色图像和红外光图像两个版本。数据集分别在白天和夜间捕获了包括校园、街道以及乡下等多个常规交通场景，并含有103108个密集标注，其中较好区分的行人个体被标注为person，不太好分辨的多个个体则被标注为people，骑行的人则被标注为cyclist。
-
-但考虑到标注的people包含多个行人目标，对于网络模型的学习可能会产生不良的影响；且骑行者cyclist本身也是分辨良好的人体，因此在实际的数据清洗中会忽略people标注，并将cyclist替换成person。除此之外，数据集中的图片由于都是从视频上截取下来，编号相近的图片所记录的画面几乎含有相同的信息，因此在数据清洗的时候会以一定步距抽样方式对有效使用的数据进行筛选，防止模型重复学习。
-
-实际实验时，采用上面指定的部分数据集作为训练数据集和验证集，两者随机按照3：1分配，最后剩下的数据集作为测试集（由白天数据集和夜间数据集组成）。所有的下面实验得到的性能数据都是在测试数据集上得到的。
-
 数据集下载地址：链接：https://pan.baidu.com/s/1h1e3rZQqIR9MIdiF0W7nXQ  提取码：67iz
 
 
 
-## 三、实验结果对比分析
+## 三、使用说明
+
+使用前需要下载上述Kaist数据集到Kaist目录下，解压并通过`trans_kaist2voc.py`转换成VOC格式的Kaist数据集（之所以不直接转换到YOLO格式是因为前期的一些工作是在VOC格式的数据集上做的），然后使用`trans_kaistvoc2yolo.py`将VOC格式的数据集转换成YOLO格式的数据集，接着使用`dataset_calculate.py`从转换得到的数据集中获取相关数据写入到data目录下的文件中。然后从U版的YOLOv3、WongKinYiu版的YOLOv4中下载对应的yolov3.pt和yolov4.weights权重文件，方便通过迁移学习的方式加载到自己的网络中进行训练。
+
+训练Training：
+
+```shell
+# 以训练kaist-visible-yolov3为例
+python train.py --epochs 300 --batch-size 16 --cfg config/kaist_yolov3.cfg --weights weights/pretrained_yolov3.pt --name kaist_yolov3 --freeze-layers -1 --anchor-cluster
+```
+
+推理Detecting：
+
+```shell
+# 以使用kaist-visible-yolov3推理为例
+python detect.py --model-name Visible-YOLov3 --cfg config/kaist_yolov3.cfg --weights weights/kaist_yolov3_best.pt --src imgs/ori/I0020_lwir.jpg --save imgs/res
+# 使用时只要给出一张可见光或者红外光图像的路径它就会自动的去找另一张图像的
+```
+
+使用测试集获取模型性能指标：
+
+```shell
+# 以获取kaist-visible-yolov3在夜间测试集上的性能为例，并将结果保存在rec-prec.fppi-mr.npy文件中
+python evaluate.py --cfg config/kaist_yolov3.cfg --weights weights/kaist_yolov3_best.pt --batch-size 64 --test-type night_test --npy-path rec-prec.fppi-mr.npy
+```
+
+
+
+## 四、实验结果
 
 实验设备采用CPU：`Intel(R) Xeon(R) Silver 4210R CPU @ 2.40GHz`，内存：`192G DDR4-3200MHz`，GPU：`Quadro RTX 6000@24220MiB × 2`。实验参数设置：超参数：`hyp['box']: 3.540, hyp['obj']: 102.880. hyp['cls']: 0.468`；初始学习率为0.001，采用余弦退火策略按轮次减少学习率到0.0001，总训练轮数50，batch size为16。
 
@@ -113,10 +141,11 @@ Test：
 
 
 
-## 四、参考资料
+## 五、参考资料
 
 - [WongKinYiu版YOLOv4 Pytorch实现](https://github.com/WongKinYiu/PyTorch_YOLOv4)
 - [U版YOLOv3 Pytorch实现](https://github.com/ultralytics/yolov3)
+- [Kaist数据集所属项目](https://github.com/SoonminHwang/rgbt-ped-detection)
 - [【行人检测】miss rate versus false positives per image (FPPI) 前世今生（理论篇）](https://blog.csdn.net/weixin_38705903/article/details/109654157)
 - [【行人检测】miss rate versus false positives per image (FPPI) 前世今生（实战篇-上）](https://blog.csdn.net/weixin_38705903/article/details/109684244)
 - [【行人检测】miss rate versus false positives per image (FPPI) 前世今生（实战篇-下）](https://blog.csdn.net/weixin_38705903/article/details/109696278)
@@ -126,4 +155,3 @@ Test：
 - [目标检测mAP计算以及coco评价标准](https://www.bilibili.com/video/BV1ez4y1X7g2?from=search&seid=1352019570332389778&spm_id_from=333.337.0.0)
 - [COCO数据集介绍以及pycocotools简单使用](https://www.bilibili.com/video/BV1TK4y1o78H/?spm_id_from=333.788.recommend_more_video.0)
 - [深度学习小技巧-mAP精度概念详解与计算绘制](https://www.bilibili.com/video/BV1zE411u7Vw?p=2)
-

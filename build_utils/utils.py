@@ -250,6 +250,10 @@ def compute_loss(p, targets, model):  # predictions, targets, model
             # pxy和pwh的计算与YOLOLayer所采用的边界框回归计算式有关。而特别需要注意的是YOLOv3中
             # 所采用的边界框回归计算方式和WongKinYiu-YOLOv4版本中的边界框回归计算方式是不同的！！
             if 'yolov4' in model.cfg:
+                # 计算公式: b_x=2\sigma{(t_x)}-0.5 \\
+                #         b_y=2\sigma{(t_y)}-0.5 \\
+                #         b_w=p_w(2\sigma{(t_w)})^2 \\
+                #         b_h=p_h(2\sigma{(t_h)})^2
                 pxy = ps[:, :2].sigmoid() * 2. - 0.5
                 pwh = (ps[:, 2:4].sigmoid() * 2) ** 2 * anchors[i]
             else:
@@ -261,20 +265,6 @@ def compute_loss(p, targets, model):  # predictions, targets, model
             else:
                 iou = bbox_iou(pbox.t(), tbox[i], x1y1x2y2=False, GIoU=True)  # iou(prediction, target)
             lbox += (1.0 - iou).mean()  # iou loss
-
-            # if 'ciou' in h:
-            #     # GIoU 计算GIoU Loss定位损失
-            #     pxy = ps[:, :2].sigmoid()
-            #     pwh = ps[:, 2:4].exp().clamp(max=1E3) * anchors[i]
-            #     pbox = torch.cat((pxy, pwh), 1)  # predicted box
-            #     iou = bbox_iou(pbox.t(), tbox[i], x1y1x2y2=False, GIoU=True)  # iou(prediction, target)
-            #     lbox += (1.0 - iou).mean()  # iou loss
-            # else:
-            #     pxy = ps[:, :2].sigmoid() * 2. - 0.5
-            #     pwh = (ps[:, 2:4].sigmoid() * 2) ** 2 * anchors[i]
-            #     pbox = torch.cat((pxy, pwh), 1).to(device)  # predicted box
-            #     iou = bbox_iou(pbox.T, tbox[i], x1y1x2y2=False, CIoU=True)  # iou(prediction, target)
-            #     lbox += (1.0 - iou).mean()  # iou loss
 
             # Obj 计算置信度损失
             tobj[b, a, gj, gi] = (1.0 - model.gr) + model.gr * iou.detach().clamp(0).type(tobj.dtype)  # iou ratio

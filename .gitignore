@@ -9,3 +9,5 @@ runs/*
 tmp
 
 !Kaist/trans_kaist2voc.py
+!Kaist/readme.txt
+!runs/readme.txt
