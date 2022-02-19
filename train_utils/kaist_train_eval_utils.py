@@ -176,15 +176,6 @@ def evaluate(model, dataloader, coco=None, device=None):
         evaluator_time = time.time() - evaluator_time
         metric_logger.update(model_time=model_time, evaluator_time=evaluator_time)
 
-        # 7、计算compute_ap_lamr()函数所需要的预测边界框字典数据，并将其加入到列表preds中
-        for img_id, output in zip(img_index, outputs):
-            for i in range(output['labels'].shape[0]):
-                info = dict()
-                info['img_id'] = img_id
-                info['conf'] = output['scores'][i].item()
-                info['bbox'] = output['boxes'][i].numpy()
-                preds.append(info)
-
     # gather the stats from all processes
     metric_logger.synchronize_between_processes()
     print("Averaged stats:", metric_logger)
@@ -195,12 +186,6 @@ def evaluate(model, dataloader, coco=None, device=None):
     coco_evaluator.summarize()
 
     result_info = coco_evaluator.coco_eval[iou_types[0]].stats.tolist()  # numpy to list
-
-    # compute_ap_lamr()计算VOC数据集AP性能指标和行人检测模型常用的FPPI-MR性能指标
-    preds.sort(key=lambda x: float(x['conf']), reverse=True)
-    saved_dict = compute_ap_lamr(preds, dataloader.dataset.labels, dataloader.dataset.shapes)
-    print(f"VOC Average Precision (VOC-AP)@[IoU = 0.5] = {(saved_dict['ap'] * 100):.2f}%")
-    print(f"Log Average Miss Rate (LAMR)@[IoU = 0.5] = {(saved_dict['lamr'] * 100):.2f}%")
 
     return result_info
 

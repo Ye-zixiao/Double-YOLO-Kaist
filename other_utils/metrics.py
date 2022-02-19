@@ -111,6 +111,7 @@ def compute_ap_lamr(preds, labels: np.ndarray, shapes: np.ndarray):
     # 内每一行向量就是一个真实边界框数据，分别为class_idx、xmin、ymin、xmax、ymax。
     # 由于我们只做行人检测，所以类别一定是行人，故将第一个class_idx用来做该真实边界框
     # 是否与某一个预测边界框相映射的标志位，0表示没有与之对应的预测边界框；否则有。
+    # TODO: 在实际代码使用的过程中，下面copy的举措还是不能解决compute_ap_lamr()仅能重复使用一次的问题
     labels = xywh2xyxy_(labels, shapes).copy() # 因为下面的操作会修改labels的class_idx，所以拷贝下
 
     nd = len(preds)  # 预测边界框总数

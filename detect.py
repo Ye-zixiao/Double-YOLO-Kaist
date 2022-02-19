@@ -95,8 +95,7 @@ def detect(img_path_list: List):
             # 加载可见光图像、红外光图像，以及对应张量形式的数据
             v_img_o, l_img_o, v_img, l_img = load_images(*get_image_paths(img_path),
                                                          input_size=opt.img_size,
-                                                         device=device,
-                                                         clahe=opt.clahe)
+                                                         device=device)
 
             # 将图像输入网络进行推理
             t1 = torch_utils.time_synchronized()
@@ -150,14 +149,14 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
 
     parser.add_argument('--device', type=str, default='cuda:0', help="detecting device")
-    parser.add_argument('--model-name', type=str, default='Double-YOLOv4-Fshare-Concat-SE3', help='detect model name')
+    parser.add_argument('--model-name', type=str, default='Visible-YOLOv4-MobileNetv3-FSHCSE3', help='detect model name')
     parser.add_argument('--src', type=str, default='imgs/ori/I00200_lwir.jpg', help='detect image path or name')
-    parser.add_argument('--save', type=str, default='results/Double-YOLOv4-Fshare-Global-Concat-SE3v-102/imgs',
+    parser.add_argument('--save', type=str, default='results/Double-YOLOv4-MNv3-Fshare-Global-CSE3-102/imgs',
                         help='result saved dir')
-    parser.add_argument('--cfg', type=str, default='config/kaist_dyolov4_fshare_global_concat_se3.cfg',
+    parser.add_argument('--cfg', type=str, default='config/kaist_dyolov4_mobilenetv3_fshare_global_cse3.cfg',
                         help='model config file path')
     parser.add_argument('--weight', type=str,
-                        default='results/Double-YOLOv4-Fshare-Global-Concat-SE3v-102/kaist_dyolov4_fshare_cse3_best.pt',
+                        default='results/Double-YOLOv4-MNv3-Fshare-Global-CSE3-102/kaist_dyolov4_mobilenetv3_fshare_global_cse3_best.pt',
                         help='initial weights path')
     parser.add_argument('--classes-json', type=str, default='data/kaist_voc_classes.json',
                         help='classes json file path')

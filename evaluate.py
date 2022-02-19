@@ -128,13 +128,13 @@ if __name__ == '__main__':
 
     parser.add_argument('--device', default='cuda:0', help='device')
     parser.add_argument('--data', type=str, default='data/kaist_data.data', help='*.data path')
-    parser.add_argument('--test-type', type=str, default='night_test', help="test dataset type")
+    parser.add_argument('--test-type', type=str, default='test', help="test dataset type")
     parser.add_argument('--hyp', type=str, default='config/hyp.scratch.4.yaml', help='hyperparameters path')
     parser.add_argument('--img-size', type=int, default=512, help='test size')
-    parser.add_argument('--batch-size', default=8, type=int, metavar='N', help='batch size when validation.')
-    parser.add_argument('--cfg', type=str, default='config/kaist_dyolov4_fshare_global_concat_se3.cfg', help="*.cfg path")
+    parser.add_argument('--batch-size', default=1, type=int, metavar='N', help='batch size when validation.')
+    parser.add_argument('--cfg', type=str, default='config/kaist_yolov4_mobilenetv3.cfg', help="*.cfg path")
     parser.add_argument('--weights', type=str,
-                        default='kaist_dyolov4_fshare_cse3_best.pt',
+                        default='results/Visible-YOLOv4-MNv3-102/kaist_yolov4_mobilenetv3_best.pt',
                         help='detecting weights')
     parser.add_argument('--npy-path', type=str, help="save recall, precision, fppi, mr into this npy file",
                         default='')

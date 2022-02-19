@@ -17,7 +17,7 @@ def create_modules(modules_defs: list, img_size, cfg):
     net_infos = modules_defs[0]  # modules_defs中第一个字典记录网络的元信息
     modules_defs.pop(0)
 
-    pre_out_filters = [3]  # 记录前一个网络层的输出通道数in_channels，即深度
+    out_filters = [3]  # 记录前一个网络层的输出通道数in_channels，即深度
     module_list = nn.ModuleList()  # 网络层列表
     routs = []  # 有部分网络层的输出在后续需要被再次使用，所以记录它们的索引
     yolo_index = -1  # 当前yolo层索引
@@ -31,15 +31,15 @@ def create_modules(modules_defs: list, img_size, cfg):
             k = mdef['size']  # 卷积核大小
             stride = mdef['stride'] if 'stride' in mdef else (mdef['stride_y'], mdef['stride_x'])
             if isinstance(k, int):
-                modules.add_module("Conv2d", nn.Conv2d(
-                    in_channels=pre_out_filters[-1] if "second_index" not in net_infos or
-                                                       i != net_infos["second_index"] else 3,
-                    out_channels=filters,
-                    kernel_size=k,
-                    stride=stride,
-                    padding=k // 2 if mdef['pad'] else 0,
-                    groups=mdef['groups'] if 'groups' in mdef else 1,
-                    bias=not bn))
+                modules.add_module("Conv2d",
+                                   nn.Conv2d(in_channels=out_filters[-1] if "second_index" not in net_infos
+                                                                            or i != net_infos["second_index"] else 3,
+                                             out_channels=filters,
+                                             kernel_size=k,
+                                             stride=stride,
+                                             padding=k // 2 if mdef['pad'] else 0,
+                                             groups=mdef['groups'] if 'groups' in mdef else 1,
+                                             bias=not bn))
             else:
                 raise TypeError("conv2d filter size must be int type")
 
@@ -48,23 +48,44 @@ def create_modules(modules_defs: list, img_size, cfg):
             else:
                 routs.append(i)  # 检测层输出 (goes into yolo layer)，不过我觉得没什么用
 
-            if mdef['activation'] == 'leaky':
-                modules.add_module("activation", nn.LeakyReLU(0.1, inplace=True))
-            elif mdef['activation'] == 'mish':
+            if mdef['activation'] == 'mish':
                 modules.add_module("activation", nn.Mish(inplace=True))
+            elif mdef['activation'] == 'relu':
+                modules.add_module("activation", nn.ReLU(inplace=True))
+            elif mdef['activation'] == 'leaky':
+                modules.add_module("activation", nn.LeakyReLU(0.1, inplace=True))
+            elif mdef['activation'] == 'relu6':
+                modules.add_module("activation", nn.ReLU6(inplace=True))
+            elif mdef['activation'] == 'hard-sigmoid':
+                modules.add_module("activation", nn.Hardsigmoid(inplace=True))
+            elif mdef['activation'] == "hard-swish":
+                modules.add_module("activation", nn.Hardswish(inplace=True))
+            elif mdef['activation'] == 'linear':
+                pass
+
+        elif mdef['type'] == 'depthwiseconvolutional':
+            # TODO: 深度可分离卷积默认是使用大小3x3的卷积核，如果想换成5x5的大小，
+            #  那么需要在下面的代码以及config中的配置文件中加一些改动
+            ks = mdef['size'] if 'size' in mdef else 3
+            filters = mdef['filters']
+            stride = mdef['stride'] if 'stride' in mdef else (mdef['stride_y'], mdef['stride_x'])
+            modules = DepthwiseSeparableConv2d(in_channels=out_filters[-1],
+                                               out_channels=filters,
+                                               kernel_size=ks,
+                                               stride=stride)
 
         elif mdef['type'] == 'dropout':
             p = mdef['probability']
             modules = nn.Dropout(p)
 
         elif mdef['type'] == 'inception':
-            modules = Inception(in_channels=pre_out_filters[-1], n1x1=mdef['n1x1'],
+            modules = Inception(in_channels=out_filters[-1], n1x1=mdef['n1x1'],
                                 n3x3_reduce=mdef['n3x3_reduce'], n3x3=mdef['n3x3'],
                                 n5x5_reduce=mdef['n5x5_reduce'], n5x5=mdef['n5x5'],
                                 pool_proj=mdef['pool_proj'])
 
         elif mdef['type'] == "se":
-            modules = SqueezeExcitation(in_channels=pre_out_filters[-1],
+            modules = SqueezeExcitation(in_channels=out_filters[-1],
                                         squeeze_factor=mdef['squeeze_factor'])
 
         elif mdef['type'] == "maxpool":
@@ -72,13 +93,17 @@ def create_modules(modules_defs: list, img_size, cfg):
             stride = mdef['stride']
             modules = nn.MaxPool2d(kernel_size=k, stride=stride, padding=(k - 1) // 2)
 
+        elif mdef['type'] == 'avgpool':
+            k = mdef['size']
+            modules = nn.AdaptiveAvgPool2d(output_size=k)
+
         elif mdef['type'] == "upsample":
             modules = nn.Upsample(scale_factor=mdef['stride'])
 
         elif mdef['type'] == "route":
             layers = mdef['layers']  # route结构所指向的浅层网络索引
             # 计算这些输入层在深度channels上叠加后的总深度
-            filters = sum([pre_out_filters[l + 1 if l > 0 else l] for l in layers])
+            filters = sum([out_filters[l + 1 if l > 0 else l] for l in layers])
             # route的layers字段所指向的网络层输出必须保存
             layers = [i + l if l < 0 else l for l in layers]
             routs.extend(layers)
@@ -86,7 +111,7 @@ def create_modules(modules_defs: list, img_size, cfg):
 
         elif mdef['type'] == "shortcut":
             layers = mdef['from']
-            filters = pre_out_filters[-1]
+            filters = out_filters[-1]
             # shortcut的from字段所指向的网络层输出必须保存
             # routs.append(i + layers[0])
             routs.extend([i + l if l < 0 else l for l in layers])
@@ -121,7 +146,7 @@ def create_modules(modules_defs: list, img_size, cfg):
             print("Warning: Unrecognized Layer Type: " + mdef["type"])
 
         module_list.append(modules)
-        pre_out_filters.append(filters)
+        out_filters.append(filters)
 
     # 记录那些层的输出需要被后续层的运算继续使用
     routs_binary = [False] * len(modules_defs)

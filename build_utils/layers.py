@@ -88,21 +88,27 @@ class WeightedFeatureFusion(nn.Module):  # weighted sum of 2 or more layers http
 class ConvBnActivation(nn.Module):
     '''Conv2d层+BN层+激活层组成的模块，可用于实现CBL、CBM等结构'''
 
-    def __init__(self, in_channels, out_channels, kernel_size, stride=1, pad=0, activation="leaky", bn=True):
+    def __init__(self, in_channels, out_channels, kernel_size, stride=1, pad=0, groups=1, activation="leaky", bn=True):
         super(ConvBnActivation, self).__init__()
 
         self.conv = nn.ModuleList()
         self.conv.append(nn.Conv2d(in_channels, out_channels, kernel_size,
                                    stride, padding=kernel_size // 2 if pad else 0,
-                                   bias=not bn))
+                                   groups=groups, bias=not bn))
         if bn:
             self.conv.append(nn.BatchNorm2d(out_channels))
         if activation == 'mish':
             self.conv.append(nn.Mish(inplace=True))
         elif activation == 'relu':
             self.conv.append(nn.ReLU(inplace=True))
+        elif activation == 'relu6':
+            self.conv.append(nn.ReLU6(inplace=True))
         elif activation == 'leaky':
             self.conv.append(nn.LeakyReLU(0.1, inplace=True))
+        elif activation == 'hard-sigmoid':
+            self.conv.append(nn.Hardsigmoid(inplace=True))
+        elif activation == 'hard-swish':
+            self.conv.append(nn.Hardswish(inplace=True))
         elif activation == 'linear':
             pass
         else:
@@ -207,6 +213,25 @@ class SEInceptionFusion(nn.Module):
         for m in self.enhance:
             y = m(y)
         return y
+
+
+class DepthwiseSeparableConv2d(nn.Module):
+    '''深度可分离卷积可以用来替代卷积核大小为3x3的普通卷积，减少网络参数量和计算量'''
+
+    def __init__(self, in_channels, out_channels, kernel_size=3, stride=1):
+        super(DepthwiseSeparableConv2d, self).__init__()
+        self.conv = nn.Sequential(
+            nn.Conv2d(in_channels, in_channels, kernel_size, stride, 1, groups=in_channels, bias=False),
+            nn.BatchNorm2d(in_channels),
+            nn.ReLU6(inplace=True),
+
+            nn.Conv2d(in_channels, out_channels, 1, 1, 0, bias=False),
+            nn.BatchNorm2d(out_channels),
+            nn.ReLU6(inplace=True)
+        )
+
+    def forward(self, x):
+        return self.conv(x)
 
 
 class MixConv2d(nn.Module):  # MixConv: Mixed Depthwise Convolutional Kernels https://arxiv.org/abs/1907.09595

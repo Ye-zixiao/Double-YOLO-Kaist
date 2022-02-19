@@ -9,6 +9,7 @@
 - 设计了基于特征共享网络FSNet的混合模态特征融合方法，通过相互指导的方式实现红外光图像特征与可见光图像特征图的有效融合。
 - 借鉴CSPNet的思路，在原先YOLOv4的SPP结构基础上改造成SPP-CSPNet来优化网路结构。
 - 使用基于最大最小边界比MMBR适应度函数的遗传算法来优化锚定框的设置。
+- 加入了MobileNetv2/3作为主干网络的轻量化实现，并对后续的加强特征提取网络中的3x3普通卷积替换成深度可分离卷积，将参数量减少到原先的1/6。
 
 
 
@@ -83,7 +84,7 @@ python detect.py --model-name Visible-YOLov3 --cfg config/kaist_yolov3.cfg --wei
 # 使用时只要给出一张可见光或者红外光图像的路径它就会自动的去找另一张图像的
 ```
 
-使用测试集获取模型性能指标：
+使用测试集获取模型性能指标Evaluating：
 
 ```shell
 # 以获取kaist-visible-yolov3在夜间测试集上的性能为例，并将结果保存在rec-prec.fppi-mr.npy文件中
@@ -111,7 +112,7 @@ python evaluate.py --cfg config/kaist_yolov3.cfg --weights weights/kaist_yolov3_
 
 上述实验中较好算法模型得到的P-R曲线和FPPI-MR曲线如下图所示：
 
-![yolov3.pr-fm-4](docs/yolov3.pr-fm-4.png)
+<img src="docs/yolov3.pr-fm-4.png" alt="yolov3.pr-fm-4" style="zoom:50%;" />
 
 基于YOLOv4改进算法的实验以及对照实验的结果如下表所示：
 
@@ -122,11 +123,22 @@ python evaluate.py --cfg config/kaist_yolov3.cfg --weights weights/kaist_yolov3_
 |          Double-YOLOv4-CSE           |         89.79%         |          23.13%          |        90.05%        |         21.94%         |        89.50%        |         24.55%         |    29.91    |
 | **Double-YOLOv4-Fshare-Global-CSE3** |       **90.22%**       |        **20.31%**        |      **90.89%**      |       **18.71%**       |      **89.47%**      |       **22.25%**       |    29.04    |
 
-![yolov4.pr-fm-4](docs/yolov4.pr-fm-4.png)
+尝试使用MobileNet来轻量化目标检测网络的参数量和计算耗时性：
+
+|                  算法模型名                  | 全天候测试集AP@IoU=0.5 | 全天候测试集LAMR@IoU=0.5 | 白天测试集AP@IoU=0.5 | 白天测试集LAMR@IoU=0.5 | 夜间测试集AP@IoU=0.5 | 夜间测试集LAMR@IoU=0.5 | 检测速度FPS |
+| :------------------------------------------: | :--------------------: | :----------------------: | :------------------: | :--------------------: | :------------------: | :--------------------: | :---------: |
+|      Visible-YOLOv4-MobileNetv2-Normal       |         81.68%         |          35.27%          |        86.68%        |         29.69%         |        75.75%        |         40.91%         |  **72.69**  |
+|      Visible-YOLOv4-MobileNetv3-Normal       |         80.80%         |          36.45%          |        85.93%        |         30.96%         |        74.75%        |         42.32%         |    71.03    |
+| Double-YOLOv4-MobileNetv2-Fshare-Global-CSE3 |       **88.42%**       |        **27.23%**        |      **89.30%**      |       **25.59%**       |      **87.40%**      |       **29.07%**       |    44.95    |
+| Double-YOLOv4-MobileNetv3-Fshare-Global-CSE3 |         87.26%         |          30.10%          |        87.28%        |         29.93%         |        87.33%        |         29.78%         |    41.17    |
+
+
+
+<img src="docs/yolov4.pr-fm-8.png" alt="yolov4.pr-fm-8" style="zoom:50%;" />
 
 所有模型性能对比图：
 
-![yolov3-4.pr-fm-8](docs/yolov3-4.pr-fm-8.png)
+![yolov3-4.pr-fm-12](docs/yolov3-4.pr-fm-12.png)
 
 上述实验得到的网络权重下载地址：
 
@@ -138,6 +150,10 @@ python evaluate.py --cfg config/kaist_yolov3.cfg --weights weights/kaist_yolov3_
 6. Double-YOLOv4-ASL：https://pan.baidu.com/s/1lb4VvGQWPA07SyXSquDQrQ  提取码：4yp8 
 7. Double-YOLOv4-CSE：https://pan.baidu.com/s/1nq3JJVzA-zo2LsCS_HauvQ  提取码：pl9s
 8. Double-YOLOv4-FSCSE3：https://pan.baidu.com/s/1jYt3pxuAJ8WrmiWzRMKkVA  提取码：7z2y
+9. Visible-YOLOv4-MNv2：https://pan.baidu.com/s/1BGSESBYhg4THBmTkdqvFYg  提取码：go8n 
+10. Visible-YOLOv4-MNv3：https://pan.baidu.com/s/1FmJECmiiepD8Ue4jFny_RA  提取码：aph0 
+11. Double-YOLOv4-MNv2-FSHCSE3：https://pan.baidu.com/s/1G1yr-sbEEGCnzGVUEHpUtg 提取码：uovy 
+12. Double-YOLOv4-MNv3-FSHCSE3：https://pan.baidu.com/s/1uU05oKy4ofzF7EgOaZ-UkQ 提取码：zsw1
 
 
 

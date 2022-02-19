@@ -246,12 +246,12 @@ if __name__ == '__main__':
 
     # 下面几个参数是我们重点需要配置的参数
     parser.add_argument('--epochs', type=int, default=50)
-    parser.add_argument('--batch-size', type=int, default=4)
+    parser.add_argument('--batch-size', type=int, default=2)
     parser.add_argument('--hyp', type=str, default='config/hyp.scratch.4.yaml', help='hyperparameters path')
-    parser.add_argument('--cfg', type=str, default='config/kaist_yolov3.cfg', help="*.cfg path")
-    parser.add_argument('--weights', type=str, default='weights/pretrained_yolov3.pt', help='initial weights path')
-    parser.add_argument('--name', default='kaist_yolov3', help='renames results.txt to results_name.txt if supplied')
-    parser.add_argument('--freeze-layers', type=int, default=74,
+    parser.add_argument('--cfg', type=str, default='config/kaist_dyolov4_mobilenetv3_fshare_global_cse3.cfg', help="*.cfg path")
+    parser.add_argument('--weights', type=str, default='weights/pretrained_dyolov4_mobilenetv3_fshare_global_cse3.pt', help='initial weights path')
+    parser.add_argument('--name', default='kaist_dyolov4_mobilenetv3_fshare_global_cse3', help='renames results.txt to results_name.txt if supplied')
+    parser.add_argument('--freeze-layers', type=int, default=-1,
                         help='Freeze feature extract layers, -1 means no layers will be froze')
     parser.add_argument('--device', default='cuda:0', help='device id (i.e. 0 or 0,1 or cpu)')
 
