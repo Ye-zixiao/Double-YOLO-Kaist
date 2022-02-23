@@ -149,22 +149,22 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
 
     parser.add_argument('--device', type=str, default='cuda:0', help="detecting device")
-    parser.add_argument('--model-name', type=str, default='Visible-YOLOv4-MobileNetv3-FSHCSE3', help='detect model name')
+    parser.add_argument('--model-name', type=str, default='Visible-YOLOv4-Fshare-Concat-SE3', help='detect model name')
     parser.add_argument('--src', type=str, default='imgs/ori/I00200_lwir.jpg', help='detect image path or name')
-    parser.add_argument('--save', type=str, default='results/Double-YOLOv4-MNv3-Fshare-Global-CSE3-102/imgs',
+    parser.add_argument('--save', type=str, default='results/Double-YOLOv4-Fshare-Global-Concat-SE3v-102/imgs',
                         help='result saved dir')
-    parser.add_argument('--cfg', type=str, default='config/kaist_dyolov4_mobilenetv3_fshare_global_cse3.cfg',
+    parser.add_argument('--cfg', type=str, default='config/kaist_dyolov4_fshare_global_concat_se3.cfg',
                         help='model config file path')
     parser.add_argument('--weight', type=str,
-                        default='results/Double-YOLOv4-MNv3-Fshare-Global-CSE3-102/kaist_dyolov4_mobilenetv3_fshare_global_cse3_best.pt',
+                        default='results/Double-YOLOv4-Fshare-Global-Concat-SE3v-102/kaist_dyolov4_fshare_cse3_best.pt',
                         help='initial weights path')
     parser.add_argument('--classes-json', type=str, default='data/kaist_voc_classes.json',
                         help='classes json file path')
     parser.add_argument('--img-size', type=int, default=512, help='detect image size')
     opt = parser.parse_args()
 
-    root = "imgs/ori/"
-    # root = "Kaist_YOLO/test/images/"
+    # root = "imgs/ori/"
+    root = "Kaist_YOLO/test/images/"
     img_path_list = [os.path.join(root, x) for x in os.listdir(root) if x.endswith('_visible.jpg')]
     random.shuffle(img_path_list)
     detect(img_path_list[:40])

@@ -1,5 +1,7 @@
 # 一种基于YOLOv3/4的混合模态行人检测算法
 
+[![996.icu](https://img.shields.io/badge/link-996.icu-red.svg)](https://996.icu)[![LICENSE](https://img.shields.io/badge/license-Anti%20996-blue.svg)](https://github.com/996icu/996.ICU/blob/master/LICENSE)
+
 ## 一、项目特性
 
 ![论文工作.drawio](docs/论文工作.drawio.png)
@@ -155,19 +157,22 @@ python evaluate.py --cfg config/kaist_yolov3.cfg --weights weights/kaist_yolov3_
 11. Double-YOLOv4-MNv2-FSHCSE3：https://pan.baidu.com/s/1G1yr-sbEEGCnzGVUEHpUtg 提取码：uovy 
 12. Double-YOLOv4-MNv3-FSHCSE3：https://pan.baidu.com/s/1uU05oKy4ofzF7EgOaZ-UkQ 提取码：zsw1
 
+在Double-YOLOv4-Fshare-Global-CSE3模型的部分推理结果：
+
+![I00304](docs/I00304.jpg)
+![I00972](docs/I00972.jpg)
+![I01039](docs/I01039.jpg)
+![I01566](docs/I01566.jpg)
+![I03307](docs/I03307.jpg)
+![set06_V003_I00195](docs/set06_V003_I00195.jpg)
+
 
 
 ## 五、参考资料
 
-- [WongKinYiu版YOLOv4 Pytorch实现](https://github.com/WongKinYiu/PyTorch_YOLOv4)
-- [U版YOLOv3 Pytorch实现](https://github.com/ultralytics/yolov3)
-- [Kaist数据集所属项目](https://github.com/SoonminHwang/rgbt-ped-detection)
-- [【行人检测】miss rate versus false positives per image (FPPI) 前世今生（理论篇）](https://blog.csdn.net/weixin_38705903/article/details/109654157)
-- [【行人检测】miss rate versus false positives per image (FPPI) 前世今生（实战篇-上）](https://blog.csdn.net/weixin_38705903/article/details/109684244)
-- [【行人检测】miss rate versus false positives per image (FPPI) 前世今生（实战篇-下）](https://blog.csdn.net/weixin_38705903/article/details/109696278)
-- [用matlab 画log Average Miss Rate - FPPI 曲线图，知识点总结](https://www.cnblogs.com/ya-cpp/p/8282383.html)
-- [行人检测 FPPI miss rate怎么画？](https://www.zhihu.com/question/37633344)
-- [MS COCO数据集介绍以及pycocotools简单使用](https://blog.csdn.net/qq_37541097/article/details/113247318?spm=1001.2014.3001.5502)
-- [目标检测mAP计算以及coco评价标准](https://www.bilibili.com/video/BV1ez4y1X7g2?from=search&seid=1352019570332389778&spm_id_from=333.337.0.0)
-- [COCO数据集介绍以及pycocotools简单使用](https://www.bilibili.com/video/BV1TK4y1o78H/?spm_id_from=333.788.recommend_more_video.0)
-- [深度学习小技巧-mAP精度概念详解与计算绘制](https://www.bilibili.com/video/BV1zE411u7Vw?p=2)
+- WongKinYiu版YOLOv4 Pytorch实现：https://github.com/WongKinYiu/PyTorch_YOLOv4
+- Ultralytics版YOLOv3 Pytorch实现：https://github.com/ultralytics/yolov3
+- Kaist数据集所属项目：https://github.com/SoonminHwang/rgbt-ped-detection
+- 多类别平均准确度计算：https://github.com/Cartucho/mAP
+- 《动手学深度学习》：https://zh.d2l.ai/
+
