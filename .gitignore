@@ -7,6 +7,7 @@ results/*
 weights/*
 runs/*
 tmp
+tmp/mobilenet_test.py
 
 !Kaist/trans_kaist2voc.py
 !Kaist/readme.txt
