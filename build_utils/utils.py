@@ -216,11 +216,11 @@ def compute_loss(p, targets, model):  # predictions, targets, model
     '''
 
     device = p[0].device
-    lcls = torch.zeros(1, device=device)  # 类别损失
-    lbox = torch.zeros(1, device=device)  # 边界框损失
-    lobj = torch.zeros(1, device=device)  # 置信度损失
+    lcls = torch.zeros(1, device=device)  # 初始化类别损失
+    lbox = torch.zeros(1, device=device)  # 初始化边界框损失
+    lobj = torch.zeros(1, device=device)  # 初始化置信度损失
 
-    # 执行正样本匹配，其中正样本指的是预测边界框与标注边界框Ground Truth Boxes的交并比IoU大于指定阈值的边界框
+    # 执行正样本匹配，计算出所有的正样本。其中正样本指的是预测边界框与标注边界框GTB的交并比IoU大于指定阈值的边界框
     tcls, tbox, indices, anchors = build_targets(p, targets, model)  # targets
     h = model.hyp  # hyperparameters
     red = 'mean'  # Loss reduction (sum or mean)
@@ -294,44 +294,87 @@ def compute_loss(p, targets, model):  # predictions, targets, model
 
 
 def build_targets(p, targets, model):
-    # Build targets for compute_loss(), input targets(image,class,x,y,w,h)
-    # 正样本匹配
-    nt = targets.shape[0]
-    tcls, tbox, indices, anch = [], [], [], []
-    gain = torch.ones(6, device=targets.device)  # normalized to gridspace gain
+    '''
+    为compute_loss()函数执行正样本匹配。一言以蔽之，正样本匹配的过程就是使用标注边界框gt去匹配
+        与之相适应的anchor模板，然后定位其所在网格，从而形成一个gt-anchor模板-网格的信息组。
+    :param p: 在预测特征层上输出的预测结果列表，长度为3，每一个元素的向量大小为
+               [bs, anchor_num, grid, grid, xywh + obj + classes]
+    :param targets: 标注边界框信息，向量大小为[num_gt, bs_idx + cls_idx + xywh]
+    :param model: 模型
+    :return: 返回找到的所有正样本所匹配的gt box的类别——tcls,
+    ...的gt边界框相对其所网格上生成的anchor的xy偏移和gt宽高——tbox,
+                        每一个正样本索引的各种索引信息——indices,
+                        每一个正样本所对应的anchor模板——anch
+    '''
 
+    nt = targets.shape[0]  # num_gt
+    tcls, tbox, indices, anch = [], [], [], []  # 分别对应class、target box、indices和anchor
+    gain = torch.ones(6, device=targets.device)  # 针对上述targets 6个参数的增益
+
+    # 检查是否使用多GPU训练
     multi_gpu = type(model) in (nn.parallel.DataParallel, nn.parallel.DistributedDataParallel)
-    for i, j in enumerate(model.yolo_layers):  # [89, 101, 113]
-        # 获取该yolo predictor对应的anchors
+    for i, j in enumerate(model.yolo_layers):  # [89, 101, 113] 获取所有预测特征层的索引
+
+        # 1、获取当前预测特征层yolo predictor对应的anchors模板，注意这个anchor_vec是anchors模板
+        # 缩放到对应预测特征层上的尺度。例如大尺度目标边界框尺度为[34, 75, 41, 104, 59, 147] / 32
+        # anchors: [3, 2]
         anchors = model.module.module_list[j].anchor_vec if multi_gpu else model.module_list[j].anchor_vec
+
+        # 2、将第i个预测层输出的shape转换为张量，然后取索引为[3, 2, 3, 2]的参数。其中：
+        # p[i].shape: [batch_size, 3, grid_h, grid_w, num_params]，故索引为2的
+        # 就是p[i].shape的grid_w，索引为3的就是p[i].shape的grid_h。所以当这一步完成
+        # 后gain就变成[1, 1, grid_w, grid_h, grid_w, grid_h]，它可以用来与target
+        # 相乘，将其从相对坐标形式转换到绝对坐标形式。
         gain[2:] = torch.tensor(p[i].shape)[[3, 2, 3, 2]]  # xyxy gain
+
+        # 3、使用一系列操作生成最终如下最右边的结果
+        # [0, 1, 2] -> [[0], -> [[0, 0, 0],
+        #               [1],     [1, 1, 1],
+        #               [2]]     [2, 2, 2]]
         na = anchors.shape[0]  # number of anchors
         # [3] -> [3, 1] -> [3, nt]
         at = torch.arange(na).view(na, 1).repeat(1, nt)  # anchor tensor, same as .repeat_interleave(nt)
 
-        # Match targets to anchors
+        # 4、使用相对标注边界框信息targets和增益gain生成关于预测输出特征层尺度下的坐标信息
         a, t, offsets = [], targets * gain, 0
+
+        # 5、将标注边界框信息与anchors模板进行匹配
         if nt:  # 如果存在target的话
-            # iou_t = 0.20
-            # j: [3, nt]
+            # iou_t = 0.20 默认IoU threshold
+            # anchors: [3, 2], t: [nt, 2], j: [3, nt]
+
+            # 5.1、将每一个anchors模板与每一个预测特征层下的targets进行匹配————计算两者的wh_iou，
+            # 并根据IoU threshold阈值获取一个布尔矩阵 (Match targets to anchors)，类似如下：
+            # j = [[True, False, False, False],
+            #      [False, True, False, True],
+            #      [False, False, True, False]]
+            # 在上面这个矩阵中我们可以看到有4个正样本得到了匹配
             j = wh_iou(anchors, t[:, 4:6]) > model.hyp['iou_t']  # iou(3,n) = wh_iou(anchors(3,2), gwh(n,2))
             # t.repeat(na, 1, 1): [nt, 6] -> [3, nt, 6]
-            # 获取iou大于阈值的anchor与target对应信息
-            a, t = at[j], t.repeat(na, 1, 1)[j]  # filter
+            # 5.2、a记录第i个标准边界框gt与哪一个anchor模板得到匹配，t记录与正样本对应的标注边界框
+            # target(gt)的坐标信息。其结果类似于如下的样子，它们的长度正好就是正样本的数量：
+            # a: [0, 1, 1, 2]
+            # t: [[0, 1, 3.6, 4.3, 20, 30],
+            #     [0, 2, 1.5, 2.1, 20, 20],
+            #     [1, 1, 1.2, 6.7, 12, 12],
+            #     [1, 1, 5.2, 3.2, 12, 20]]
+            a, t = at[j], t.repeat(na, 1, 1)[j]
+            # 张量a和t共同描述了一个正样本，指出了与之对应的anchor模板和关联的真实边界框
+            # ，但目前为止我们还不知道具体这些正样本在哪个网格中。
 
-        # Define
+        # 6、计算正样本所处的边界框的中心坐标所处的网格左上角grid_i和grid_j
         # long等于to(torch.int64), 数值向下取整
-        b, c = t[:, :2].long().T  # image, class
-        gxy = t[:, 2:4]  # grid xy
-        gwh = t[:, 4:6]  # grid wh
-        gij = (gxy - offsets).long()  # 匹配targets所在的grid cell左上角坐标
-        gi, gj = gij.T  # grid xy indices
+        b, c = t[:, :2].long().T  # 取出t中的前两个参数 image_idx, class_idx
+        gxy = t[:, 2:4]  # 取出t中第2到3个参数 grid_x, grid_x
+        gwh = t[:, 4:6]  # 取出t中第2到3个参数 grid_w, grid_h
+        gij = (gxy - offsets).long()  # 匹配targets所在的grid cell左上角坐标，这步其实没用
+        gi, gj = gij.T  # 取出向下取整后的grid_xy得到所有正样本中心所在的网格左上角坐标grid_i和grid_j
 
         # Append
-        indices.append((b, a, gj, gi))  # image, anchor, grid indices(x, y)
-        tbox.append(torch.cat((gxy - gij, gwh), 1))  # gt box相对anchor的x,y偏移量以及w,h
-        anch.append(anchors[a])  # anchors
-        tcls.append(c)  # class
+        indices.append((b, a, gj, gi))  # 记录正样本的各种索引：image_idx, anchor模板索引, grid indices(x, y)
+        tbox.append(torch.cat((gxy - gij, gwh), 1))  # 记录正样本对应gt相对于该网格上生成的anchor的x,y偏移量以及w,h
+        anch.append(anchors[a])  # 记录正样本所对应的anchors模板
+        tcls.append(c)  # 记录每一个正样本它所匹配gt的类别class_idx
         if c.shape[0]:  # if any targets
             # 目标的标签数值不能大于给定的目标类别数
             assert c.max() < model.nc, 'Model accepts %g classes labeled from 0-%g, however you labelled a class %g. ' \

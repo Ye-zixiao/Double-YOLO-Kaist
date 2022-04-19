@@ -72,7 +72,7 @@ def train_one_epoch(model,  # 网络模型对象
 
         # 6、执行正向传播，并计算相应的损失函数
         with amp.autocast(enabled=enable_amp):
-            pred = model(v_imgs, l_imgs)  # 正向传播
+            pred = model(v_imgs, l_imgs)  # 正向传播，返回的training结果没有经过YOLOLayer过多的处理
 
             # 计算损失函数
             loss_dict = compute_loss(pred, targets, model)

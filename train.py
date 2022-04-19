@@ -256,7 +256,7 @@ if __name__ == '__main__':
     parser.add_argument('--device', default='cuda:0', help='device id (i.e. 0 or 0,1 or cpu)')
 
     # 临时启用的程序参数
-    parser.add_argument('--cutoff', type=int, default=104, help="model weights cutoff")
+    parser.add_argument('--cutoff', type=int, default=104, help="model weights cutoff, when loading files with the suffix '.weights'")
     parser.add_argument('--snow', action='store_true', help='use snowflake change to process images')
 
     # 下面几个参数几乎不需要改动

@@ -309,7 +309,8 @@ class YOLO(nn.Module):
             # 张量的维度为：(bs, anchor_num, grid, grid, xywh + obj + classes)
             return yolo_out
         else:
-            # 否则输出的是一个记录含有多个bbox边界框实际中心点宽高+置信度+类别分数的矩阵以及输入p
+            # 否则输出的是一个记录含有多个bbox边界框实际中心点宽高+置信度+类别分数的矩阵以及输入p，这个p
+            # 实际上就是预测层（最后一个Conv2d层）的training版本的输出结果，它没有被边界框公式所计算回归
             x, p = zip(*yolo_out)
             return torch.cat(x, 1), p
 
