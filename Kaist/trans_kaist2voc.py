@@ -126,7 +126,7 @@ def parse_anno_files(kaist_dir, sample_step=3, label_threshold=2):
     annotation_sub_dirs = os.listdir(annotation_dir)
 
     # 创建目标转移VOC根目录
-    voc_dir = os.path.join(kaist_dir, "../Kaist_VOC1")
+    voc_dir = os.path.join(kaist_dir, "../Kaist_VOC")
     if not os.path.exists(voc_dir):
         os.makedirs(voc_dir)
 
@@ -292,8 +292,8 @@ if __name__ == '__main__':
         'set11': {'train': 0.3, 'valid': 0.2, 'day_test': 0.0, 'night_test': 0.5},
     }
 
-    dt = dataset_split(set_dict, kaist_voc_root="../Kaist_VOC1")
+    dt = dataset_split(set_dict, kaist_voc_root="../Kaist_VOC")
     print("in summary, train: {}, valid: {}, test: {}, day_test: {}, night_test: {}".format(
         len(dt['train']), len(dt['val']), len(dt['test']), len(dt['day_test']), len(dt['night_test'])))
 
-    dict_dump(dt, kaist_voc_root="../Kaist_VOC1")
+    dict_dump(dt, kaist_voc_root="../Kaist_VOC")
